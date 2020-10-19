@@ -179,7 +179,7 @@ sum(succ$R)
 
 
 setwd("C:\\STEFFEN\\RSPB\\UKOT\\Gough\\ANALYSIS\\PopulationModel\\MAPR")
-sink("MAPR_IPM_v6.jags")
+sink("MAPR_IPM_REV1.jags")
 cat("
   
   
@@ -187,7 +187,7 @@ cat("
     #-------------------------------------------------
     # - population model for the MacGillivray's Prion population
     # - age structured model with 4 age classes 
-    # - adult survival based on CMR ringing data
+    # - adult survival based on CMR ringing data with m-array and temporal variation
     # - productivity based on Prion Cave nest monitoring data
     # - TWO future scenarios to project population growth with and without eradication
     # -------------------------------------------------
@@ -201,21 +201,21 @@ cat("
     # 1.1. Priors and constraints FOR FECUNDITY
     # -------------------------------------------------
     
-    #mean.fec ~ dunif(0,0.5)      ## uninformative prior for CURRENT FECUNDITY
-    fec.drop ~ dunif(0.2,0.3)      ## uninformative prior for DECREASE IN FECUNDITY
-    orig.fec ~ dunif(0.25,0.35)         ## uninformative prior for ORIGINAL FECUNDITY
-    full.fec ~ dnorm(0.519,1000) T(0.1,1)     ## prior for full fecundity without predation from Nevoux & Barbraud (2005) - very high precision
-    mean.fec <- orig.fec * fec.drop
-    fec.decrease <- (mean.fec-orig.fec)/(66-1)
+    mean.fec ~ dunif(0,0.5)         ## uninformative prior for CURRENT FECUNDITY
+    orig.fec ~ dunif(0.38,0.40)         ## uninformative prior for ORIGINAL FECUNDITY
+    full.fec ~ dnorm(0.519,100) T(0.1,1)     ## prior for full fecundity without predation from Nevoux & Barbraud (2005) - very high precision
+    fec.decrease <- (mean.fec-orig.fec)/(66-1) ## 66 years elapsed between original pop size data in 1957 and start of productivity time series in 2014
     
     
     # -------------------------------------------------        
     # 1.2. Priors and constraints FOR SURVIVAL
     # -------------------------------------------------
     
-    phi ~ dunif(0.7, 1) 
-    p ~ dunif(0, 1)
-    juv.surv <- juv.surv.prop*phi
+    for (t in 1:(n.occasions-1)){
+      phi[t] ~ dunif(0.7, 1)         # Priors for survival
+      p[t] ~ dunif(0, 1)           # Priors for recapture
+    }
+
     juv.surv.prop ~ dnorm(mean.juv.surv.prop,1000) T(0,1)
     
     #-------------------------------------------------  
@@ -228,51 +228,48 @@ cat("
     for (scen in 1:2){
       
       ### INITIAL VALUES FOR COMPONENTS FOR YEAR 1 - based on stable stage distribution from previous model
-      
+      mean.juv.surv <- juv.surv.prop*mean.phi
       JUV[1,scen]<-round(Ntot.breed[1,scen]*0.5*(orig.fec))
-      N1[1,scen]<-round(Ntot.breed[1,scen]*0.5*(orig.fec)*juv.surv)
-      N2[1,scen]<-round(Ntot.breed[1,scen]*0.5*(orig.fec)*juv.surv*phi)
-      N3[1,scen]<-round(Ntot.breed[1,scen]*0.5*(orig.fec)*juv.surv*phi*phi)
-      #Ntot.breed[1,scen] ~ dunif(2000000,5000000)         # initial value of population size
-      Ntot.breed[1,scen] ~ dnorm(Ntot.obs[1,scen],tau.obs[scen])         # initial value of population size
+      N1[1,scen]<-round(Ntot.breed[1,scen]*0.5*(orig.fec)*mean.juv.surv)
+      N2[1,scen]<-round(Ntot.breed[1,scen]*0.5*(orig.fec)*mean.juv.surv*mean.phi)
+      N3[1,scen]<-round(Ntot.breed[1,scen]*0.5*(orig.fec)*mean.juv.surv*mean.phi*mean.phi)
+      Ntot.breed[1,scen] ~ dunif(2000000,5000000)         # initial value of population size
       
-      for (tt in 2:66){
+      for (tt in 2:65){
+
+        ## STOCHASTIC DRAW OF SURVIVAL PROBABILITIES
+        ad.surv~dnorm()
+
 
         ## DECREASING FECUNDITY FROM UNKNOWN ORIGINAL in 1956 to known current fecundity in 2015
         fec.proj[scen,tt]<-orig.fec + fec.decrease*tt    ## models linear decrease of fecundity
         
         ## THE PRE-BREEDERS ##
-        JUV[tt,scen] ~ dbin(fec.proj[scen,tt],round(0.5 * Ntot.breed[tt,scen]))                                                               ### number of locally produced FEMALE chicks
-        N1[tt,scen]  ~ dbin(juv.surv, max(2,round(JUV[tt-1,scen])))                                                    ### number of 1-year old survivors 
+        JUV[tt,scen] ~ dbin(fec.proj[scen,tt],round(0.5 * Ntot.breed[tt,scen]))                                   ### number of locally produced FEMALE chicks
+        N1[tt,scen]  ~ dbin(juv.surv, max(2,round(JUV[tt-1,scen])))                                               ### number of 1-year old survivors 
         N2[tt,scen] ~ dbin(phi, max(2,round(N1[tt-1,scen])))                                                      ### number of 2-year old survivors
-        N3[tt,scen] ~ dbin(phi, max(2,round(N2[tt-1,scen])))                                                       ### number of 3-year old survivors
+        N3[tt,scen] ~ dbin(phi, max(2,round(N2[tt-1,scen])))                                                      ### number of 3-year old survivors
         
         ## THE BREEDERS ##
         Ntot.breed[tt,scen] ~ dbin(phi, max(2,round(N3[tt-1,scen]+Ntot.breed[tt-1,scen])))                            ### the annual number of breeding birds is the sum of old breeders and recent recruits
         
       } # tt
       
-      for (tt in 67:PROJ){
+      for (tt in 66:PROJ){
         
         ## SELECT CURRENT OR RODENT FREE FECUNDITY FOR FUTURE
         fec.proj[scen,tt]<-max(mean.fec,(scen-1)*full.fec)    ## takes current fecundity for scenario 1 and full fecundity for scenario 2 
         
         ## THE PRE-BREEDERS ##
-        JUV[tt,scen] ~ dbin(fec.proj[scen,tt],round(0.5 * Ntot.breed[tt,scen]))                                                                     ### need a discrete number otherwise dbin will fail, dpois must be >0
-        N1[tt,scen]  ~ dbin(juv.surv, max(2,round(JUV[tt-1,scen])))                                                    ### number of 1-year old survivors 
+        JUV[tt,scen] ~ dbin(fec.proj[scen,tt],round(0.5 * Ntot.breed[tt,scen]))                                   ### need a discrete number otherwise dbin will fail, dpois must be >0
+        N1[tt,scen]  ~ dbin(juv.surv, max(2,round(JUV[tt-1,scen])))                                               ### number of 1-year old survivors 
         N2[tt,scen] ~ dbin(phi, max(2,round(N1[tt-1,scen])))                                                      ### number of 2-year old survivors
-        N3[tt,scen] ~ dbin(phi, max(2,round(N2[tt-1,scen])))                                                       ### number of 3-year old survivors
+        N3[tt,scen] ~ dbin(phi, max(2,round(N2[tt-1,scen])))                                                      ### number of 3-year old survivors
         
         ## THE BREEDERS ##
         Ntot.breed[tt,scen] ~ dbin(phi, max(2,round(N3[tt-1,scen]+Ntot.breed[tt-1,scen])))                            ### the annual number of breeding birds is the sum of old breeders and recent recruits
         
       } # tt
-    
-    ### CONSTRAINT ON COUNT DATA IN YEAR 2000
-    sigma.obs[scen] ~ dunif(200000,2000000)
-    tau.obs[scen]<-pow(sigma.obs[scen],-2)
-    #Ntot.obs[1,scen] ~ dnorm(Ntot.breed[1,scen],tau.obs[scen])
-    Ntot.obs[2,scen] ~ dnorm(Ntot.breed[46,scen],tau.obs[scen])      
       
     } # scen    
     
@@ -289,28 +286,57 @@ cat("
     
     
     # -------------------------------------------------        
-    # 2.3. Likelihood for adult and juvenile survival from CMR
+    # 2.3. Likelihood for adult survival from CMR - multinomial likelihood of m-array data
     # -------------------------------------------------
     
-    for (i in 1:nind){
-      # Define latent state at first capture
-      z[i,f[i]] <- 1
+    # Define the multinomial likelihood
+    for (t in 1:(n.occasions-1)){
+      marr[t,1:n.occasions] ~ dmulti(pr[t, ], r[t])
+    }
+    
+    # Calculate the number of birds released each year
+    for (t in 1:(n.occasions-1)){
+      r[t] <- sum(marr[t, ])
+    }
+    # Define the cell probabilities of the m-array
+    # Main diagonal
+    for (t in 1:(n.occasions-1)){
+      q[t] <- 1-p[t]                # Probability of non-recapture
+      pr[t,t] <- phi[t]*p[t]
       
-      for (t in (f[i]+1):n.occasions){
-        # State process
-        z[i,t] ~ dbern(mu1[i,t])
-        mu1[i,t] <- phi * z[i,t-1]
-        
-        # Observation process
-        y[i,t] ~ dbern(mu2[i,t])
-        mu2[i,t] <- p * z[i,t]
-      } #t
-    } #i
+      # Above main diagonal
+      for (j in (t+1):(n.occasions-1)){
+        pr[t,j] <- prod(phi[t:j])*prod(q[t:(j-1)])*p[j]
+      } #j
+      
+      # Below main diagonal
+      for (j in 1:(t-1)){
+        pr[t,j] <- 0
+      } #j
+    } #t
+    
+    # Last column: probability of non-recapture
+    for (t in 1:(n.occasions-1)){
+      pr[t,n.occasions] <- 1-sum(pr[t,1:(n.occasions-1)])
+    } #t
+    
+    # Assess model fit using Freeman-Tukey statistic
+    # Compute fit statistics for observed data
+    for (t in 1:(n.occasions-1)){
+      for (j in 1:n.occasions){
+        expmarr[t,j] <- r[t]*pr[t,j]
+        E.org[t,j] <- pow((pow(marr[t,j], 0.5)-pow(expmarr[t,j], 0.5)), 2)
+      } #j
+    } #t
+    
     
     
     # -------------------------------------------------        
-    # 4. DERIVED POPULATION GROWTH RATE
+    # 4. DERIVED PARAMETERS
     # -------------------------------------------------
+    ## DERIVED MEAN SURVIVAL
+    mean.phi<-mean(phi[])
+    sd.phi<-sd(phi[])
     
     ## DERIVED POPULATION GROWTH RATE 
     for (scen in 1:2){
