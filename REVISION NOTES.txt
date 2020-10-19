@@ -1,0 +1,8 @@
+REVISION NOTES
+
+- implemented a GoF test in CJS model
+- read in AHM book that posterior predictive check can only work on aggregate measures, not on single cell values
+- need to run CJS model in m-array for proper GoF test
+
+- DIC is a very confusing measure and pD, the number of effective parameters is highly variable
+- for prediction AIC is recommended, hence I extracted the number of parameters and calculated AIC by hand from deviance
