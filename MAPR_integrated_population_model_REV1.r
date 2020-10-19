@@ -49,25 +49,40 @@ system(paste0("C:/PROGRA~1/R/R-35~1.1/bin/i386/Rscript.exe ", shQuote("C:\\STEFF
 try(setwd("C:\\STEFFEN\\RSPB\\UKOT\\Gough\\ANALYSIS\\SeabirdSurvival"), silent=T)
 load("GOUGH_seabird_CMR_data.RData")
 
-###### FILTER DATA FROM RAW CONTACTS ########
-contacts<-contacts %>% filter(SpeciesCode %in% c("MAPR","BBPR","PRIO")) %>% filter(Location=="Prion Cave")
+###### FILTER ADULT DATA FROM RAW CONTACTS ########
+## find the birds marked very late in 2015:
+latemarked<-contacts %>% filter(SpeciesCode %in% c("MAPR","BBPR","PRIO")) %>% filter(Location=="Prion Cave") %>% filter(!Age=="Chick") %>%
+  filter(month(Date_Time)==12) %>% filter(day(Date_Time)>15) %>% group_by(BirdID) %>% summarise(n=length(Date_Time))
+
+contacts<-contacts %>% filter(SpeciesCode %in% c("MAPR","BBPR","PRIO")) %>% filter(Location=="Prion Cave") %>%
+  mutate(Age=ifelse(is.na(Age),"Adult",as.character(Age))) %>%
+  mutate(Contact_Season=ifelse(is.na(Contact_Season),"2017-18",as.character(Contact_Season))) %>%
+  filter(!Age=="Chick")
 head(contacts)  ## seabird count data
+unique(contacts$Age)
 
-EncHist<-contacts %>% group_by(BirdID,Contact_Year) %>%
+EncHist<-contacts %>% group_by(BirdID,Contact_Season) %>%
   summarise(n=length(Date_Time)) %>%
-  spread(key=Contact_Year,value=n,fill=0)
-
-
-# ELIMINATE TRANSIENTS ONLY OBSERVED ON A SINGLE OCCASION
-del <- apply(EncHist[,2:ncol(EncHist)], 1, sum)
+  spread(key=Contact_Season,value=n,fill=0)
 dim(EncHist)
-EncHist<-EncHist[!(del==1),]
-dim(EncHist)
+
 
 #### FORMAT FOR SIMPLE CJS MODEL ############
 CH<-as.matrix(EncHist[,2:ncol(EncHist)], dimnames=F)
-CH<-ifelse(CH>0,1,0)
-head(CH)
+CH<-ifelse(CH>0,1,0)  ##1=seen, 2=not seen
+
+#### ELIMINATE TRANSIENTS ONLY OBSERVED IN A SINGLE YEAR - THIS REMOVES 93 birds (~45%)
+del <- apply(CH[,1:ncol(CH)], 1, sum) 
+dim(CH)
+rCH<-CH[!(del==1),]
+dim(rCH)
+
+#### ELIMINATE ONLY TRANSIENTS MARKED AFTER MID DECEMBER AND ONLY OBSERVED IN A SINGLE YEAR  - THIS REMOVES ONLY 14 birds
+del2<-EncHist$BirdID %in% latemarked$BirdID
+dim(CH)
+rCH<-CH[!(del==1 & del2==TRUE),]
+dim(rCH)
+
 
 
 # Compute vector with occasion of first capture
