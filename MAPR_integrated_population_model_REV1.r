@@ -134,8 +134,6 @@ sum(succ$R)
 # 
 
 
-
-
 setwd("C:\\STEFFEN\\RSPB\\UKOT\\Gough\\ANALYSIS\\PopulationModel\\MAPR")
 sink("MAPR_IPM_REV1.jags")
 cat("
@@ -160,7 +158,7 @@ cat("
     # -------------------------------------------------
     
     mean.fec ~ dunif(0,0.5)         ## uninformative prior for CURRENT FECUNDITY
-    orig.fec ~ dunif(0.38,0.40)         ## uninformative prior for ORIGINAL FECUNDITY
+    orig.fec ~ dunif(0.3,0.35)         ## uninformative prior for ORIGINAL FECUNDITY
     full.fec ~ dnorm(0.519,100) T(0.1,1)     ## prior for full fecundity without predation from Nevoux & Barbraud (2005) - very high precision
     fec.decrease <- (mean.fec-orig.fec)/(66-1) ## 66 years elapsed between original pop size data in 1957 and start of productivity time series in 2014
     
@@ -185,8 +183,8 @@ cat("
     }
     
     mean.phi ~ dunif(0, 1)             # Prior for mean survival
-    juv.surv.prop ~ dnorm(mean.juv.surv.prop,1000) T(0,1)
-    mean.juv.surv <- juv.surv.prop*mean.phi
+    #juv.surv.prop ~ dnorm(mean.juv.surv.prop,1000) T(0,1)
+    mean.juv.surv ~ dunif(0.65, 0.80) 
     
     #-------------------------------------------------  
     # 2. LIKELIHOODS AND ECOLOGICAL STATE MODEL
@@ -211,7 +209,7 @@ cat("
         
         ## THE PRE-BREEDERS ##
         JUV[tt,scen] ~ dbin(fec.proj[scen,tt],round(0.5 * Ntot.breed[tt,scen]))                                   ### number of locally produced FEMALE chicks
-        N1[tt,scen]  ~ dbin(juv.surv, max(2,round(JUV[tt-1,scen])))                                               ### number of 1-year old survivors 
+        N1[tt,scen]  ~ dbin(mean.juv.surv, max(2,round(JUV[tt-1,scen])))                                               ### number of 1-year old survivors 
         N2[tt,scen] ~ dbin(mean.phi, max(2,round(N1[tt-1,scen])))                                                      ### number of 2-year old survivors
         N3[tt,scen] ~ dbin(mean.phi, max(2,round(N2[tt-1,scen])))                                                      ### number of 3-year old survivors
         
@@ -227,7 +225,7 @@ cat("
         
         ## THE PRE-BREEDERS ##
         JUV[tt,scen] ~ dbin(fec.proj[scen,tt],round(0.5 * Ntot.breed[tt,scen]))                                   ### need a discrete number otherwise dbin will fail, dpois must be >0
-        N1[tt,scen]  ~ dbin(juv.surv, max(2,round(JUV[tt-1,scen])))                                               ### number of 1-year old survivors 
+        N1[tt,scen]  ~ dbin(mean.juv.surv, max(2,round(JUV[tt-1,scen])))                                               ### number of 1-year old survivors 
         N2[tt,scen] ~ dbin(mean.phi, max(2,round(N1[tt-1,scen])))                                                      ### number of 2-year old survivors
         N3[tt,scen] ~ dbin(mean.phi, max(2,round(N2[tt-1,scen])))                                                      ### number of 3-year old survivors
         
@@ -351,7 +349,7 @@ jags.data <- list(## survival
   f = f,
   n.occasions = dim(CH)[2],
   nind = dim(CH)[1],
-  mean.juv.surv.prop= 0.728/0.894,  ## juvenile survival based on proportion of adult survival from Jiguet 2007
+  #mean.juv.surv.prop= 0.728/0.894,  ## juvenile survival based on proportion of adult survival from Jiguet 2007
   
   ## fecundity
   R =succ$R,
@@ -363,29 +361,29 @@ jags.data <- list(## survival
   PROJ=66+36)  ### adjusted for v6 to 103 years
 
 # Initial values 
-inits <- function(){list(phi = runif(1, 0.7, 1),
-                         p = runif(1, 0, 1),
+inits <- function(){list(mean.phi = runif(1, 0.7, 1),
+                         p = runif(dim(CH)[2]-1, 0, 1),
                          orig.fec= runif(1, 0.38, 0.40))}  ### adjusted for v6 to 0.25-0.35
 
 
 # Parameters monitored
-parameters <- c("orig.fec","mean.fec","full.fec","fec.decrease","fec.drop","juv.surv","phi","p","growth.rate","lambda","Ntot.breed")
+parameters <- c("orig.fec","mean.fec","fec.decrease","fec.drop","mean.juv.surv","mean.phi","growth.rate","lambda","Ntot.breed")
 
 # MCMC settings
-ni <- 150000
-nt <- 5
+ni <- 1500000
+nt <- 10
 nb <- 50000
 nc <- 3
 
 # Call JAGS from R (model created below)
-MAPR_IPM <- jags(jags.data, inits, parameters, "C:\\STEFFEN\\RSPB\\UKOT\\Gough\\ANALYSIS\\PopulationModel\\MAPR\\MAPR_IPM_v4b.jags",  ## changed from v4 to v6 on 10 Aug
+MAPR_IPM <- jags(jags.data, inits, parameters, "C:\\STEFFEN\\RSPB\\UKOT\\Gough\\ANALYSIS\\PopulationModel\\MAPR\\MAPR_IPM_REV1.jags",  ## changed from v4 to v6 on 10 Aug
                      n.chains = nc, n.thin = nt, n.burnin = nb,parallel=T,n.iter = ni)
 
 
 ### save model workspace
-setwd("C:\\STEFFEN\\MANUSCRIPTS\\in_prep\\MAPR_pop_model")
-save.image("MAPR_IPM_v4b.RData")
-#load("MAPR_IPM_v4b.RData")
+setwd("C:\\STEFFEN\\MANUSCRIPTS\\submitted\\MAPR_pop_model")
+save.image("MAPR_IPM_REV1.RData")
+#load("MAPR_IPM_REV1.RData")
 
 
 
@@ -407,13 +405,13 @@ out$parameter<-row.names(MAPR_IPM$summary)
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 head(out)
 
-TABLE1<-out %>% filter(parameter %in% c('orig.fec','mean.fec','full.fec','fec.decrease','fec.drop','phi','juv.surv','growth.rate[1]','growth.rate[2]')) %>%
+TABLE1<-out %>% filter(parameter %in% c('orig.fec','mean.fec','fec.decrease','fec.drop','mean.phi','mean.juv.surv','growth.rate[1]','growth.rate[2]')) %>%
   select(parameter,c(5,3,7))
 
 names(TABLE1)<-c("Parameter","Median","lowerCL","upperCL")
-TABLE1$Parameter<-c("original productivity (1956)","current productivity (2014-2019)","mouse-free productivity","productivity decrease (1956-2014)","first year survival probability","annual adult survival probability","annual population growth rate (no eradication)","annual population growth rate (with eradication)")
+TABLE1$Parameter<-c("original productivity (1956)","current productivity (2014-2019)","productivity decrease (1956-2014)","first year survival probability","annual adult survival probability","annual population growth rate (no eradication)","annual population growth rate (with eradication)")
 TABLE1
-setwd("C:\\STEFFEN\\MANUSCRIPTS\\in_prep\\MAPR_pop_model")
+setwd("C:\\STEFFEN\\MANUSCRIPTS\\submitted\\MAPR_pop_model")
 fwrite(TABLE1,"MAPR_demographic_parameter_estimates_v4b.csv")
 
 
@@ -446,7 +444,7 @@ MAPRpop %>% filter(Year==1956)
 171867/3498443
 
 ### CREATE PLOT FOR BASELINE TRAJECTORY
-MAPRpop$ucl[MAPRpop$ucl>6000000]<-4999999
+MAPRpop$ucl[MAPRpop$ucl>5000000]<-4999999
 
 ggplot()+
   geom_line(data=MAPRpop, aes(x=Year, y=median, color=Scenario), size=1)+
@@ -468,14 +466,16 @@ ggplot()+
         axis.title=element_text(size=18),
         legend.text=element_text(size=12, color="black"),
         legend.title=element_text(size=14, color="black"),
-        legend.position = c(0.8,0.85),
+        legend.position = c(0.73,0.89),
         legend.key = element_rect(fill = NA),
         strip.text.x=element_text(size=18, color="black"), 
         strip.background=element_rect(fill="white", colour="black"))
-ggsave("MAPR_population_projection_v4b_CI50.jpg", width=9, height=6)
+ggsave("MAPR_population_projection_REV1_CI50.jpg", width=9, height=6)
 
 
 ### CREATE INSET PLOT FOR FUTURE PROJECTION
+MAPRpop$ucl[MAPRpop$ucl>1000000]<-999999
+
 ggplot()+
   geom_line(data=MAPRpop[MAPRpop$Year>2019,], aes(x=Year, y=median, color=Scenario), size=1)+
   geom_ribbon(data=MAPRpop[MAPRpop$Year>2019,],aes(x=Year, ymin=lcl,ymax=ucl, fill=Scenario),alpha=0.2)+
@@ -495,7 +495,7 @@ ggplot()+
         legend.key = element_rect(fill = NA),
         strip.text.x=element_text(size=18, color="black"), 
         strip.background=element_rect(fill="white", colour="black"))
-ggsave("MAPR_population_projection_v4b_CI50_INSET.jpg", width=9, height=6)
+ggsave("MAPR_population_projection_REV1_CI50_INSET.jpg", width=9, height=6)
 
 
 
@@ -538,7 +538,7 @@ ggplot(data=extprop)+
   geom_line(aes(x=Year, y=ext.prob, color=Scenario), size=1)+
   
   ## format axis ticks
-  scale_y_continuous(name="Probability of extinction (%)", limits=c(0,0.2),breaks=seq(0,0.2,0.05), labels=as.character(seq(0,20,5)))+
+  scale_y_continuous(name="Probability of extinction (%)", limits=c(0,0.25),breaks=seq(0,0.25,0.05), labels=as.character(seq(0,25,5)))+
   scale_x_continuous(name="Year", breaks=seq(2020,2055,5), labels=as.character(seq(2020,2055,5)))+
   guides(color=guide_legend(title="Scenario"),fill=guide_legend(title="Scenario"))+
   scale_colour_manual(palette=colfunc)+
@@ -555,7 +555,7 @@ ggplot(data=extprop)+
         strip.text.y=element_text(size=14, color="black"),
         strip.background=element_rect(fill="white", colour="black"))
 
-ggsave("MAPR_extinction_probability_v4b_250.jpg", width=9, height=6)
+ggsave("MAPR_extinction_probability_REV1_250.jpg", width=9, height=6)
 
 
 
@@ -583,31 +583,3 @@ orig.fec ~ dunif(0,1)         ## uninformative prior for ORIGINAL FECUNDITY
 full.fec ~ dnorm(0.519,100) T(0.1,1)     ## prior for full fecundity without predation from Nevoux & Barbraud (2005) - very high precision
 mean.fec <- orig.fec * (1 - fec.drop)
 fec.decrease <- fec.drop * orig.fec / (66 - 1)
-
-
-
-
-
-#### GOODNESS OF FIT TEST ##########
-
-#We can use the same model code as above, deleting - or just ignoring - the GOF code highlighted in blue, but we need to monitor z:
-  
-  wanted <- c("p", "beta", "N", "z")
-
-#After running the model, we do this:
-  
-  attach(jagsOut$sims.list)
-nIter <- length(p)
-Tobs <- Tsim <- numeric(nIter)
-for(iter in 1:nIter) {
-  psi <- plogis(covs %*% beta[iter, ])
-  Tobs[iter] <- sum((sqrt(y) - sqrt(p[iter]*z[iter, ]*n))^2)
-  ySim <- rbinom(237, n, p[iter]*z[iter, ])
-  Tsim[iter] <- sum((sqrt(ySim) - sqrt(p[iter]*z[iter, ]*n))^2)
-} 
-detach(jagsOut$sims.list)
-
-MASS::eqscplot(Tobs, Tsim, xlim=range(Tobs, Tsim), ylim=range(Tobs, Tsim),
-               xlab="Observed data", ylab="Simulated data")
-abline(0, 1, lwd=2, col='red')
-mean(Tsim > Tobs) # the P value
