@@ -1,0 +1,197 @@
+
+  
+  
+  model {
+    #-------------------------------------------------
+    # - population model for the MacGillivray's Prion population
+    # - age structured model with 4 age classes 
+    # - adult survival based on CMR ringing data with m-array and temporal variation
+    # - productivity based on Prion Cave nest monitoring data
+    # - TWO future scenarios to project population growth with and without eradication
+    # -------------------------------------------------
+    
+    #-------------------------------------------------  
+    # 1. PRIORS FOR ALL DATA SETS
+    #-------------------------------------------------
+    
+    
+    # -------------------------------------------------        
+    # 1.1. Priors and constraints FOR FECUNDITY
+    # -------------------------------------------------
+    
+    mean.fec ~ dunif(0,0.5)         ## uninformative prior for CURRENT FECUNDITY
+    orig.fec ~ dunif(0.38,0.40)         ## uninformative prior for ORIGINAL FECUNDITY
+    full.fec ~ dnorm(0.519,100) T(0.1,1)     ## prior for full fecundity without predation from Nevoux & Barbraud (2005) - very high precision
+    fec.decrease <- (mean.fec-orig.fec)/(66-1) ## 66 years elapsed between original pop size data in 1957 and start of productivity time series in 2014
+    
+    
+    # -------------------------------------------------        
+    # 1.2. Priors and constraints FOR SURVIVAL
+    # -------------------------------------------------
+    
+    # -------------------------------------------------
+    # Parameters:
+    # phi: survival probability for adults
+    # p: recapture probability when breeding
+    # emigrate: probability to emigrate into inaccessible part of Prion Cave
+    # -------------------------------------------------
+    
+    # Priors and constraints
+    for (t in 1:(n.occasions-1)){
+      #logit(phi[t]) <- mu.phi + surv.raneff[t]
+      #surv.raneff[t] ~ dnorm(0, tau.phi)
+      p[t] ~ dunif(0, 1)
+      emigrate[t] ~ dunif(0,0.25)
+    }
+    
+    mean.phi ~ dunif(0, 1)             # Prior for mean survival
+    juv.surv.prop ~ dnorm(mean.juv.surv.prop,1000) T(0,1)
+    mean.juv.surv <- juv.surv.prop*mean.phi
+    
+    #-------------------------------------------------  
+    # 2. LIKELIHOODS AND ECOLOGICAL STATE MODEL
+    #-------------------------------------------------
+    
+    # -------------------------------------------------        
+    # 2.1. System process: female based matrix model
+    # -------------------------------------------------
+    for (scen in 1:2){
+      
+      ### INITIAL VALUES FOR COMPONENTS FOR YEAR 1 - based on stable stage distribution from previous model
+      JUV[1,scen]<-round(Ntot.breed[1,scen]*0.5*(orig.fec))
+      N1[1,scen]<-round(Ntot.breed[1,scen]*0.5*(orig.fec)*mean.juv.surv)
+      N2[1,scen]<-round(Ntot.breed[1,scen]*0.5*(orig.fec)*mean.juv.surv*mean.phi)
+      N3[1,scen]<-round(Ntot.breed[1,scen]*0.5*(orig.fec)*mean.juv.surv*mean.phi*mean.phi)
+      Ntot.breed[1,scen] ~ dunif(2000000,5000000)         # initial value of population size
+      
+      for (tt in 2:65){
+
+        ## DECREASING FECUNDITY FROM UNKNOWN ORIGINAL in 1956 to known current fecundity in 2015
+        fec.proj[scen,tt]<-orig.fec + fec.decrease*tt    ## models linear decrease of fecundity
+        
+        ## THE PRE-BREEDERS ##
+        JUV[tt,scen] ~ dbin(fec.proj[scen,tt],round(0.5 * Ntot.breed[tt,scen]))                                   ### number of locally produced FEMALE chicks
+        N1[tt,scen]  ~ dbin(juv.surv, max(2,round(JUV[tt-1,scen])))                                               ### number of 1-year old survivors 
+        N2[tt,scen] ~ dbin(mean.phi, max(2,round(N1[tt-1,scen])))                                                      ### number of 2-year old survivors
+        N3[tt,scen] ~ dbin(mean.phi, max(2,round(N2[tt-1,scen])))                                                      ### number of 3-year old survivors
+        
+        ## THE BREEDERS ##
+        Ntot.breed[tt,scen] ~ dbin(mean.phi, max(2,round(N3[tt-1,scen]+Ntot.breed[tt-1,scen])))                            ### the annual number of breeding birds is the sum of old breeders and recent recruits
+        
+      } # tt
+      
+      for (tt in 66:PROJ){
+        
+        ## SELECT CURRENT OR RODENT FREE FECUNDITY FOR FUTURE
+        fec.proj[scen,tt]<-max(mean.fec,(scen-1)*full.fec)    ## takes current fecundity for scenario 1 and full fecundity for scenario 2 
+        
+        ## THE PRE-BREEDERS ##
+        JUV[tt,scen] ~ dbin(fec.proj[scen,tt],round(0.5 * Ntot.breed[tt,scen]))                                   ### need a discrete number otherwise dbin will fail, dpois must be >0
+        N1[tt,scen]  ~ dbin(juv.surv, max(2,round(JUV[tt-1,scen])))                                               ### number of 1-year old survivors 
+        N2[tt,scen] ~ dbin(mean.phi, max(2,round(N1[tt-1,scen])))                                                      ### number of 2-year old survivors
+        N3[tt,scen] ~ dbin(mean.phi, max(2,round(N2[tt-1,scen])))                                                      ### number of 3-year old survivors
+        
+        ## THE BREEDERS ##
+        Ntot.breed[tt,scen] ~ dbin(mean.phi, max(2,round(N3[tt-1,scen]+Ntot.breed[tt-1,scen])))                            ### the annual number of breeding birds is the sum of old breeders and recent recruits
+        
+      } # tt
+      
+    } # scen    
+    
+
+
+    
+    # -------------------------------------------------        
+    # 2.2. Likelihood for fecundity: Poisson regression from the number of surveyed broods
+    # -------------------------------------------------
+    for (t in 1:(T.fec)){      ### T-1 or not
+      J[t] ~ dpois(rho.fec[t])
+      rho.fec[t] <- R[t]*mean.fec
+    } #	close loop over every year in which we have fecundity data
+    
+    
+    # -------------------------------------------------        
+    # 2.3. Likelihood for adult survival from multi-event model
+    # -------------------------------------------------
+    # States (S):
+    # 1 dead
+    # 2 alive in Prion Cave
+    # 3 alive as transient
+    
+    # Observations (O):
+    # 1 observed
+    # 2 not observed
+    # -------------------------------------------------
+    
+    
+    
+    # -------------------------------------------------
+    # Define state-transition and observation matrices 
+    # -------------------------------------------------
+    
+    for (i in 1:nind){
+    
+      for (t in f[i]:(n.occasions-1)){
+    
+      # Define probabilities of state S(t+1) [last dim] given S(t) [first dim]
+    
+        ps[1,i,t,1]<-1    ## dead birds stay dead
+        ps[1,i,t,2]<-0
+        ps[1,i,t,3]<-0
+    
+        ps[2,i,t,1]<-(1-mean.phi)
+        ps[2,i,t,2]<-mean.phi*(1-emigrate[t])
+        ps[2,i,t,3]<-mean.phi*emigrate[t]
+    
+        ps[3,i,t,1]<-(1-mean.phi)
+        ps[3,i,t,2]<-0
+        ps[3,i,t,3]<-mean.phi
+    
+    # Define probabilities of O(t) [last dim] given S(t)  [first dim]
+    
+        po[1,i,t,1]<-0
+        po[1,i,t,2]<-1
+    
+        po[2,i,t,1]<-p[t]
+        po[2,i,t,2]<-(1-p[t])
+    
+        po[3,i,t,1]<-0
+        po[3,i,t,2]<-1
+    
+      } #t
+    } #i
+    
+    
+    # Likelihood 
+    for (i in 1:nind){
+      # Define latent state at first capture
+      z[i,f[i]] <- 2 ## alive when first marked
+      for (t in (f[i]+1):n.occasions){
+        # State process: draw S(t) given S(t-1)
+        z[i,t] ~ dcat(ps[z[i,t-1], i, t-1,])
+        # Observation process: draw O(t) given S(t)
+        y[i,t] ~ dcat(po[z[i,t], i, t-1,])
+      } #t
+    } #i
+    
+    
+    # -------------------------------------------------        
+    # 4. DERIVED PARAMETERS
+    # -------------------------------------------------
+
+    ## DERIVED POPULATION GROWTH RATE 
+    for (scen in 1:2){
+      for (tt in 1:33){
+        lambda[tt,scen]<-Ntot.breed[tt+67,scen]/max(1,Ntot.breed[tt+66,scen])
+        loglam[tt,scen]<-log(lambda[tt,scen])
+      } ## end of tt
+      
+      growth.rate[scen] <- exp((1/(33))*sum(loglam[1:(33),scen]))  ### geometric mean growth rate
+      
+    } ## end of scen
+    
+  }  ## END MODEL LOOP
+    
+    
+    
+    

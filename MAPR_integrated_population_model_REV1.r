@@ -24,8 +24,9 @@
 
 # REVISION in OCTOBER 2020:
 # updated CMR data input - removed chicks and changed encounter occasion (from year to season)
-# switched to m-array to allow GoF test for survival model
+# switched to m-array to allow GoF test for survival model - but used this only for GoF test
 # included temporal variation in phi and p in survival model
+# included all transients and switched to a multi-event survival model
 
 library(tidyverse)
 library(jagsUI)
@@ -50,72 +51,28 @@ try(setwd("C:\\STEFFEN\\RSPB\\UKOT\\Gough\\ANALYSIS\\SeabirdSurvival"), silent=T
 load("GOUGH_seabird_CMR_data.RData")
 
 ###### FILTER ADULT DATA FROM RAW CONTACTS ########
-## find the birds marked very late in 2015:
-latemarked<-contacts %>% filter(SpeciesCode %in% c("MAPR","BBPR","PRIO")) %>% filter(Location=="Prion Cave") %>% filter(!Age=="Chick") %>%
-  filter(month(Date_Time)==12) %>% filter(day(Date_Time)>15) %>% group_by(BirdID) %>% summarise(n=length(Date_Time))
-
 contacts<-contacts %>% filter(SpeciesCode %in% c("MAPR","BBPR","PRIO")) %>% filter(Location=="Prion Cave") %>%
+  #filter(is.na(Age))
   mutate(Age=ifelse(is.na(Age),"Adult",as.character(Age))) %>%
   mutate(Contact_Season=ifelse(is.na(Contact_Season),"2017-18",as.character(Contact_Season))) %>%
+  mutate(Contact_Season=ifelse(Contact_Season=="2020-21","2019-20",as.character(Contact_Season))) %>%
   filter(!Age=="Chick")
+#filter(Contact_Year==2015) %>% filter(month(Date_Time)==12) %>% filter(day(Date_Time)>15)
 head(contacts)  ## seabird count data
 unique(contacts$Age)
 
 EncHist<-contacts %>% group_by(BirdID,Contact_Season) %>%
   summarise(n=length(Date_Time)) %>%
-  spread(key=Contact_Season,value=n,fill=0)
+  spread(key=Contact_Season,value=n,fill=0)  ### 0 for 'not seen'
 dim(EncHist)
-
 
 #### FORMAT FOR SIMPLE CJS MODEL ############
 CH<-as.matrix(EncHist[,2:ncol(EncHist)], dimnames=F)
-CH<-ifelse(CH>0,1,0)  ##1=seen, 2=not seen
-
-#### ELIMINATE TRANSIENTS ONLY OBSERVED IN A SINGLE YEAR - THIS REMOVES 93 birds (~45%)
-del <- apply(CH[,1:ncol(CH)], 1, sum) 
-dim(CH)
-rCH<-CH[!(del==1),]
-dim(rCH)
-
-#### ELIMINATE ONLY TRANSIENTS MARKED AFTER MID DECEMBER AND ONLY OBSERVED IN A SINGLE YEAR  - THIS REMOVES ONLY 14 birds
-del2<-EncHist$BirdID %in% latemarked$BirdID
-dim(CH)
-rCH<-CH[!(del==1 & del2==TRUE),]
-dim(rCH)
+CH<-ifelse(CH>0,1,2)  ##1=seen, 2=not seen
 
 # Compute vector with occasion of first capture
 get.first <- function(x) min(which(x==1))
 f <- apply(CH, 1, get.first)
-
-#### Create Function to create a m-array based on capture-histories (CH)
-marray <- function(CH){
-  nind <- dim(CH)[1]
-  n.occasions <- dim(CH)[2]
-  m.array <- matrix(data = 0, ncol = n.occasions+1, nrow = n.occasions)
-  # Calculate the number of released individuals at each time period
-  for (t in 1:n.occasions){
-    m.array[t,1] <- sum(CH[,t])
-  }
-  for (i in 1:nind){
-    pos <- which(CH[i,]!=0)
-    g <- length(pos)
-    for (z in 1:(g-1)){
-      m.array[pos[z],pos[z+1]] <- m.array[pos[z],pos[z+1]] + 1
-    } #z
-  } #i
-  # Calculate the number of individuals that is never recaptured
-  for (t in 1:n.occasions){
-    m.array[t,n.occasions+1] <- m.array[t,1] - sum(m.array[t,2:n.occasions])
-  }
-  out <- m.array[1:(n.occasions-1),2:(n.occasions+1)]
-  return(out)
-}
-
-# Create the m-array from the capture-histories
-marr <- marray(CH)
-rmarr <- marray(rCH)
-
-
 
 
 
@@ -150,6 +107,7 @@ load("MAPR_IPM_input_data.RData")
 
 succ<-succ[1,] %>% mutate(Year=2014,R=63,J=0) %>% bind_rows(succ) %>% arrange(Year)
 sum(succ$R)
+
 
 #########################################################################
 # 3. Specify BASIC POPULATION MODEL WITH TWO SCENARIOS
@@ -211,12 +169,24 @@ cat("
     # 1.2. Priors and constraints FOR SURVIVAL
     # -------------------------------------------------
     
+    # -------------------------------------------------
+    # Parameters:
+    # phi: survival probability for adults
+    # p: recapture probability when breeding
+    # emigrate: probability to emigrate into inaccessible part of Prion Cave
+    # -------------------------------------------------
+    
+    # Priors and constraints
     for (t in 1:(n.occasions-1)){
-      phi[t] ~ dunif(0.7, 1)         # Priors for survival
-      p[t] ~ dunif(0, 1)           # Priors for recapture
+      #logit(phi[t]) <- mu.phi + surv.raneff[t]
+      #surv.raneff[t] ~ dnorm(0, tau.phi)
+      p[t] ~ dunif(0, 1)
+      emigrate[t] ~ dunif(0,0.25)
     }
-
+    
+    mean.phi ~ dunif(0, 1)             # Prior for mean survival
     juv.surv.prop ~ dnorm(mean.juv.surv.prop,1000) T(0,1)
+    mean.juv.surv <- juv.surv.prop*mean.phi
     
     #-------------------------------------------------  
     # 2. LIKELIHOODS AND ECOLOGICAL STATE MODEL
@@ -228,7 +198,6 @@ cat("
     for (scen in 1:2){
       
       ### INITIAL VALUES FOR COMPONENTS FOR YEAR 1 - based on stable stage distribution from previous model
-      mean.juv.surv <- juv.surv.prop*mean.phi
       JUV[1,scen]<-round(Ntot.breed[1,scen]*0.5*(orig.fec))
       N1[1,scen]<-round(Ntot.breed[1,scen]*0.5*(orig.fec)*mean.juv.surv)
       N2[1,scen]<-round(Ntot.breed[1,scen]*0.5*(orig.fec)*mean.juv.surv*mean.phi)
@@ -237,21 +206,17 @@ cat("
       
       for (tt in 2:65){
 
-        ## STOCHASTIC DRAW OF SURVIVAL PROBABILITIES
-        ad.surv~dnorm()
-
-
         ## DECREASING FECUNDITY FROM UNKNOWN ORIGINAL in 1956 to known current fecundity in 2015
         fec.proj[scen,tt]<-orig.fec + fec.decrease*tt    ## models linear decrease of fecundity
         
         ## THE PRE-BREEDERS ##
         JUV[tt,scen] ~ dbin(fec.proj[scen,tt],round(0.5 * Ntot.breed[tt,scen]))                                   ### number of locally produced FEMALE chicks
         N1[tt,scen]  ~ dbin(juv.surv, max(2,round(JUV[tt-1,scen])))                                               ### number of 1-year old survivors 
-        N2[tt,scen] ~ dbin(phi, max(2,round(N1[tt-1,scen])))                                                      ### number of 2-year old survivors
-        N3[tt,scen] ~ dbin(phi, max(2,round(N2[tt-1,scen])))                                                      ### number of 3-year old survivors
+        N2[tt,scen] ~ dbin(mean.phi, max(2,round(N1[tt-1,scen])))                                                      ### number of 2-year old survivors
+        N3[tt,scen] ~ dbin(mean.phi, max(2,round(N2[tt-1,scen])))                                                      ### number of 3-year old survivors
         
         ## THE BREEDERS ##
-        Ntot.breed[tt,scen] ~ dbin(phi, max(2,round(N3[tt-1,scen]+Ntot.breed[tt-1,scen])))                            ### the annual number of breeding birds is the sum of old breeders and recent recruits
+        Ntot.breed[tt,scen] ~ dbin(mean.phi, max(2,round(N3[tt-1,scen]+Ntot.breed[tt-1,scen])))                            ### the annual number of breeding birds is the sum of old breeders and recent recruits
         
       } # tt
       
@@ -263,11 +228,11 @@ cat("
         ## THE PRE-BREEDERS ##
         JUV[tt,scen] ~ dbin(fec.proj[scen,tt],round(0.5 * Ntot.breed[tt,scen]))                                   ### need a discrete number otherwise dbin will fail, dpois must be >0
         N1[tt,scen]  ~ dbin(juv.surv, max(2,round(JUV[tt-1,scen])))                                               ### number of 1-year old survivors 
-        N2[tt,scen] ~ dbin(phi, max(2,round(N1[tt-1,scen])))                                                      ### number of 2-year old survivors
-        N3[tt,scen] ~ dbin(phi, max(2,round(N2[tt-1,scen])))                                                      ### number of 3-year old survivors
+        N2[tt,scen] ~ dbin(mean.phi, max(2,round(N1[tt-1,scen])))                                                      ### number of 2-year old survivors
+        N3[tt,scen] ~ dbin(mean.phi, max(2,round(N2[tt-1,scen])))                                                      ### number of 3-year old survivors
         
         ## THE BREEDERS ##
-        Ntot.breed[tt,scen] ~ dbin(phi, max(2,round(N3[tt-1,scen]+Ntot.breed[tt-1,scen])))                            ### the annual number of breeding birds is the sum of old breeders and recent recruits
+        Ntot.breed[tt,scen] ~ dbin(mean.phi, max(2,round(N3[tt-1,scen]+Ntot.breed[tt-1,scen])))                            ### the annual number of breeding birds is the sum of old breeders and recent recruits
         
       } # tt
       
@@ -286,58 +251,74 @@ cat("
     
     
     # -------------------------------------------------        
-    # 2.3. Likelihood for adult survival from CMR - multinomial likelihood of m-array data
+    # 2.3. Likelihood for adult survival from multi-event model
+    # -------------------------------------------------
+    # States (S):
+    # 1 dead
+    # 2 alive in Prion Cave
+    # 3 alive as transient
+    
+    # Observations (O):
+    # 1 observed
+    # 2 not observed
     # -------------------------------------------------
     
-    # Define the multinomial likelihood
-    for (t in 1:(n.occasions-1)){
-      marr[t,1:n.occasions] ~ dmulti(pr[t, ], r[t])
-    }
     
-    # Calculate the number of birds released each year
-    for (t in 1:(n.occasions-1)){
-      r[t] <- sum(marr[t, ])
-    }
-    # Define the cell probabilities of the m-array
-    # Main diagonal
-    for (t in 1:(n.occasions-1)){
-      q[t] <- 1-p[t]                # Probability of non-recapture
-      pr[t,t] <- phi[t]*p[t]
-      
-      # Above main diagonal
-      for (j in (t+1):(n.occasions-1)){
-        pr[t,j] <- prod(phi[t:j])*prod(q[t:(j-1)])*p[j]
-      } #j
-      
-      # Below main diagonal
-      for (j in 1:(t-1)){
-        pr[t,j] <- 0
-      } #j
-    } #t
     
-    # Last column: probability of non-recapture
-    for (t in 1:(n.occasions-1)){
-      pr[t,n.occasions] <- 1-sum(pr[t,1:(n.occasions-1)])
-    } #t
+    # -------------------------------------------------
+    # Define state-transition and observation matrices 
+    # -------------------------------------------------
     
-    # Assess model fit using Freeman-Tukey statistic
-    # Compute fit statistics for observed data
-    for (t in 1:(n.occasions-1)){
-      for (j in 1:n.occasions){
-        expmarr[t,j] <- r[t]*pr[t,j]
-        E.org[t,j] <- pow((pow(marr[t,j], 0.5)-pow(expmarr[t,j], 0.5)), 2)
-      } #j
-    } #t
+    for (i in 1:nind){
     
+      for (t in f[i]:(n.occasions-1)){
+    
+      # Define probabilities of state S(t+1) [last dim] given S(t) [first dim]
+    
+        ps[1,i,t,1]<-1    ## dead birds stay dead
+        ps[1,i,t,2]<-0
+        ps[1,i,t,3]<-0
+    
+        ps[2,i,t,1]<-(1-mean.phi)
+        ps[2,i,t,2]<-mean.phi*(1-emigrate[t])
+        ps[2,i,t,3]<-mean.phi*emigrate[t]
+    
+        ps[3,i,t,1]<-(1-mean.phi)
+        ps[3,i,t,2]<-0
+        ps[3,i,t,3]<-mean.phi
+    
+    # Define probabilities of O(t) [last dim] given S(t)  [first dim]
+    
+        po[1,i,t,1]<-0
+        po[1,i,t,2]<-1
+    
+        po[2,i,t,1]<-p[t]
+        po[2,i,t,2]<-(1-p[t])
+    
+        po[3,i,t,1]<-0
+        po[3,i,t,2]<-1
+    
+      } #t
+    } #i
+    
+    
+    # Likelihood 
+    for (i in 1:nind){
+      # Define latent state at first capture
+      z[i,f[i]] <- 2 ## alive when first marked
+      for (t in (f[i]+1):n.occasions){
+        # State process: draw S(t) given S(t-1)
+        z[i,t] ~ dcat(ps[z[i,t-1], i, t-1,])
+        # Observation process: draw O(t) given S(t)
+        y[i,t] ~ dcat(po[z[i,t], i, t-1,])
+      } #t
+    } #i
     
     
     # -------------------------------------------------        
     # 4. DERIVED PARAMETERS
     # -------------------------------------------------
-    ## DERIVED MEAN SURVIVAL
-    mean.phi<-mean(phi[])
-    sd.phi<-sd(phi[])
-    
+
     ## DERIVED POPULATION GROWTH RATE 
     for (scen in 1:2){
       for (tt in 1:33){
