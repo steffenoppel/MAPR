@@ -147,7 +147,7 @@ cat("
     mean.fec[1] ~ dunif(0,1)         ## uninformative prior for BAD YEARS
     mean.fec[2] ~ dunif(0,1)         ## uninformative prior for GOOD YEARS
     prop.good ~ dunif(0,1)           ## proportion of years that is good or bad (to allow past variation when good years were more common)
-    orig.fec ~ dunif(0.8,1)          ## uninformative prior for ORIGINAL FECUNDITY in proportion of years with good (similar to 2016) fecundity
+    orig.fec ~ dunif(0.8,0.9)        ## uninformative prior for ORIGINAL FECUNDITY in proportion of years with good (similar to 2016) fecundity
     full.fec ~ dnorm(0.519,100) T(0.1,1)     ## prior for full fecundity without predation from Nevoux & Barbraud (2005) - very high precision
     fec.decrease <- (prop.good-orig.fec)/(58-0)   ## 58 years elapsed between original pop size data in 1957 and start of productivity time series in 2014
     
@@ -173,7 +173,7 @@ cat("
     
     mean.phi ~ dunif(0, 1)             # Prior for mean survival
     #juv.surv.prop ~ dnorm(mean.juv.surv.prop,1000) T(0,1)
-    mean.juv.surv ~ dunif(0.65, 0.80) 
+    mean.juv.surv ~ dunif(0.63,0.78)    ## based on juvenile survival for Balearic shearwaters in the Med.
     
     #-------------------------------------------------  
     # 2. LIKELIHOODS AND ECOLOGICAL STATE MODEL
