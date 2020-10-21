@@ -22,7 +22,7 @@
     mean.fec[1] ~ dunif(0,1)         ## uninformative prior for BAD YEARS
     mean.fec[2] ~ dunif(0,1)         ## uninformative prior for GOOD YEARS
     prop.good ~ dunif(0,1)           ## proportion of years that is good or bad (to allow past variation when good years were more common)
-    orig.fec ~ dunif(0.75,0.85)        ## uninformative prior for ORIGINAL FECUNDITY in proportion of years with good (similar to 2016) fecundity
+    orig.fec ~ dunif(0.87,0.93)        ## uninformative prior for ORIGINAL FECUNDITY in proportion of years with good (similar to 2016) fecundity
     full.fec ~ dnorm(0.519,100) T(0.1,1)     ## prior for full fecundity without predation from Nevoux & Barbraud (2005) - very high precision
     fec.decrease <- (prop.good-orig.fec)/(58-0)   ## 58 years elapsed between original pop size data in 1957 and start of productivity time series in 2014
     

@@ -91,8 +91,6 @@ rm(contacts,nestsDB,visDB)
 setwd("C:\\STEFFEN\\RSPB\\UKOT\\Gough\\ANALYSIS\\PopulationModel\\MAPR")
 # save.image("MAPR_IPM_input_data.RData")
 # load("MAPR_IPM_input_data.RData")
-
-succ<-succ[1,] %>% mutate(Year=2014,R=63,J=0) %>% bind_rows(succ) %>% arrange(Year)
 sum(succ$R)
 
 
@@ -147,7 +145,7 @@ cat("
     mean.fec[1] ~ dunif(0,1)         ## uninformative prior for BAD YEARS
     mean.fec[2] ~ dunif(0,1)         ## uninformative prior for GOOD YEARS
     prop.good ~ dunif(0,1)           ## proportion of years that is good or bad (to allow past variation when good years were more common)
-    orig.fec ~ dunif(0.75,0.85)        ## uninformative prior for ORIGINAL FECUNDITY in proportion of years with good (similar to 2016) fecundity
+    orig.fec ~ dunif(0.87,0.93)        ## uninformative prior for ORIGINAL FECUNDITY in proportion of years with good (similar to 2016) fecundity
     full.fec ~ dnorm(0.519,100) T(0.1,1)     ## prior for full fecundity without predation from Nevoux & Barbraud (2005) - very high precision
     fec.decrease <- (prop.good-orig.fec)/(58-0)   ## 58 years elapsed between original pop size data in 1957 and start of productivity time series in 2014
     
@@ -363,7 +361,7 @@ jags.data <- list(## survival
 # Initial values 
 inits <- function(){list(mean.phi = runif(1, 0.7, 1),
                          p = runif(dim(CH)[2]-1, 0, 1),
-                         orig.fec= runif(1, 0.38, 0.40))}  ### adjusted for v6 to 0.25-0.35
+                         orig.fec= runif(1, 0.75, 0.85))}  ### adjusted for REV1 as frequency of good years
 
 
 # Parameters monitored
@@ -371,7 +369,7 @@ inits <- function(){list(mean.phi = runif(1, 0.7, 1),
 parameters <- c("orig.fec","mean.fec","fec.decrease","prop.good","mean.juv.surv","mean.phi","growth.rate","lambda","Ntot.breed")
 
 # MCMC settings
-ni <- 15000
+ni <- 55000
 nt <- 10
 nb <- 5000
 nc <- 3
@@ -402,7 +400,7 @@ out$parameter<-row.names(MAPR_IPM$summary)
 
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# CREATE OUTPUT TABLE FOR REPORT /MANUSCRIPT
+# CREATE OUTPUT TABLE FOR MANUSCRIPT
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 head(out)
 
@@ -440,7 +438,7 @@ MAPRpop<-out[(grep("Ntot.breed\\[",out$parameter)),c(12,5,4,6)] %>%
 ### summary for manuscript
 MAPRpop %>% filter(Year==2020)
 MAPRpop %>% filter(Year==1956)
-171867/3498443
+146305.5/3489647
 
 ### CREATE PLOT FOR BASELINE TRAJECTORY
 MAPRpop$ucl[MAPRpop$ucl>5000000]<-4999999
