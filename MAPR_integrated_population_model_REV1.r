@@ -537,7 +537,7 @@ ggplot(data=extprop)+
   geom_line(aes(x=Year, y=ext.prob, color=Scenario), size=1)+
   
   ## format axis ticks
-  scale_y_continuous(name="Probability of extinction (%)", limits=c(0,0.25),breaks=seq(0,0.25,0.05), labels=as.character(seq(0,25,5)))+
+  scale_y_continuous(name="Probability of extinction (%)", limits=c(0,0.3),breaks=seq(0,0.3,0.05), labels=as.character(seq(0,30,5)))+
   scale_x_continuous(name="Year", breaks=seq(2020,2055,5), labels=as.character(seq(2020,2055,5)))+
   guides(color=guide_legend(title="Scenario"),fill=guide_legend(title="Scenario"))+
   scale_colour_manual(palette=colfunc)+
