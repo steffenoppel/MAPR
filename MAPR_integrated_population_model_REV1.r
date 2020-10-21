@@ -147,10 +147,9 @@ cat("
     mean.fec[1] ~ dunif(0,1)         ## uninformative prior for BAD YEARS
     mean.fec[2] ~ dunif(0,1)         ## uninformative prior for GOOD YEARS
     prop.good ~ dunif(0,1)           ## proportion of years that is good or bad (to allow past variation when good years were more common)
-    orig.fec ~ dunif(0.8,0.9)        ## uninformative prior for ORIGINAL FECUNDITY in proportion of years with good (similar to 2016) fecundity
+    orig.fec ~ dunif(0.75,0.85)        ## uninformative prior for ORIGINAL FECUNDITY in proportion of years with good (similar to 2016) fecundity
     full.fec ~ dnorm(0.519,100) T(0.1,1)     ## prior for full fecundity without predation from Nevoux & Barbraud (2005) - very high precision
     fec.decrease <- (prop.good-orig.fec)/(58-0)   ## 58 years elapsed between original pop size data in 1957 and start of productivity time series in 2014
-    
     
     # -------------------------------------------------        
     # 1.2. Priors and constraints FOR SURVIVAL
@@ -200,10 +199,11 @@ cat("
         ## LINEARLY DECREASING PROBABILITY OF A GOOD YEAR FROM 1956 to 2014
         year.fec.prop[scen,tt]<- max(0,min(1,(orig.fec + fec.decrease*tt))) ## calculate yearly proportion of good breeding year, but constrain to 0-1 to avoid invalid parent value
         year.prop.good[scen,tt] ~ dbern(year.fec.prop[scen,tt])
-        fec.proj[scen,tt]<-mean.fec[year.prop.good[scen,tt]+1]    ## takes good or bad year fecundity 
+        fec.proj[scen,tt]<-mean.fec[year.prop.good[scen,tt]+1]    ## takes good or bad year fecundity
+        breed.prop[scen,tt] ~ dunif(0.85,0.95)    ## breeding propensity
         
         ## THE PRE-BREEDERS ##
-        JUV[tt,scen] ~ dbin(fec.proj[scen,tt],round(0.5 * Ntot.breed[tt,scen]))                                   ### number of locally produced FEMALE chicks
+        JUV[tt,scen] ~ dbin(fec.proj[scen,tt],round(0.5 * Ntot.breed[tt,scen]*breed.prop[scen,tt]))                                   ### number of locally produced FEMALE chicks
         N1[tt,scen]  ~ dbin(mean.juv.surv, max(2,round(JUV[tt-1,scen])))                                               ### number of 1-year old survivors 
         N2[tt,scen] ~ dbin(mean.phi, max(2,round(N1[tt-1,scen])))                                                      ### number of 2-year old survivors
         N3[tt,scen] ~ dbin(mean.phi, max(2,round(N2[tt-1,scen])))                                                      ### number of 3-year old survivors
@@ -218,10 +218,11 @@ cat("
         ## SELECT GOOD OR BAD OR RODENT FREE FECUNDITY FOR FUTURE
         year.fec.prop[scen,tt]<- min(1,max(0,(orig.fec + fec.decrease*tt))) ## calculate yearly proportion of good breeding year, but constrain to 0-1 to avoid invalid parent value
         year.prop.good[scen,tt] ~ dbern(year.fec.prop[scen,tt])
-        fec.proj[scen,tt]<-max(mean.fec[year.prop.good[scen,tt]+1],(scen-1)*full.fec)    ## takes current fecundity for scenario 1 and full fecundity for scenario 2 
+        fec.proj[scen,tt]<-max(mean.fec[year.prop.good[scen,tt]+1],(scen-1)*full.fec)    ## takes current fecundity for scenario 1 and full fecundity for scenario 2
+        breed.prop[scen,tt] ~ dunif(0.85,0.95)    ## breeding propensity
         
         ## THE PRE-BREEDERS ##
-        JUV[tt,scen] ~ dbin(fec.proj[scen,tt],round(0.5 * Ntot.breed[tt,scen]))                                   ### need a discrete number otherwise dbin will fail, dpois must be >0
+        JUV[tt,scen] ~ dbin(fec.proj[scen,tt],round(0.5 * Ntot.breed[tt,scen]*breed.prop[scen,tt]))                                   ### need a discrete number otherwise dbin will fail, dpois must be >0
         N1[tt,scen]  ~ dbin(mean.juv.surv, max(2,round(JUV[tt-1,scen])))                                               ### number of 1-year old survivors 
         N2[tt,scen] ~ dbin(mean.phi, max(2,round(N1[tt-1,scen])))                                                      ### number of 2-year old survivors
         N3[tt,scen] ~ dbin(mean.phi, max(2,round(N2[tt-1,scen])))                                                      ### number of 3-year old survivors
@@ -405,21 +406,19 @@ out$parameter<-row.names(MAPR_IPM$summary)
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 head(out)
 
-TABLE1<-out %>% filter(parameter %in% c('orig.fec','mean.fec','fec.decrease','fec.drop','mean.phi','mean.juv.surv','growth.rate[1]','growth.rate[2]')) %>%
+TABLE1<-out %>% filter(parameter %in% c('mean.fec[1]','mean.fec[2]','orig.fec','prop.good','fec.decrease','mean.phi','mean.juv.surv','growth.rate[1]','growth.rate[2]')) %>%
   select(parameter,c(5,3,7))
 
 names(TABLE1)<-c("Parameter","Median","lowerCL","upperCL")
-TABLE1$Parameter<-c("original productivity (1956)","current productivity (2014-2019)","productivity decrease (1956-2014)","first year survival probability","annual adult survival probability","annual population growth rate (no eradication)","annual population growth rate (with eradication)")
+TABLE1$Parameter<-c("original proportion of good breeding year (1956)","productivity (poor year)","productivity (good year)","annual decline in frequency of good breeding year","current proportion of good breeding year (2014-2019)","first year survival probability","annual adult survival probability","annual population growth rate (no eradication)","annual population growth rate (with eradication)")
 TABLE1
 setwd("C:\\STEFFEN\\MANUSCRIPTS\\submitted\\MAPR_pop_model")
-fwrite(TABLE1,"MAPR_demographic_parameter_estimates_v4b.csv")
+fwrite(TABLE1,"MAPR_demographic_parameter_estimates_REV1.csv")
 
 
 ## REPORT QUANTITIES FOR RESULTS SECTION
 sum(succ$R)
 dim(CH)
-length(del[which(del==1)])
-mean(del[which(del>1)])
 
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
