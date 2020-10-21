@@ -8,25 +8,12 @@
 # implemented in JAGS based on Kery and Schaub 2012
 # written by Steffen.oppel@rspb.org.uk in May 2020
 
-# revised in June 2020: start projection in 1955 with 5 million pairs, 2001 had 1 million pairs, project to 2050 (100 years)
-# attempted multi-event formulation for survival to account for transients, but yielded very low adult survival - not included (see MAPR_survival_transients.r in C:\STEFFEN\RSPB\UKOT\Gough\ANALYSIS\SeabirdSurvival)
-# retained capture history for only non-transients (birds observed at least twice)
-
-
-# updated on 22 June 2020 after receiving advice from Adam Butler on how to include the count data
-# added stochastic count node and adjusted other priors as suggested
-# DID NOT CONVERGE - reverted to very narrow prior on orig.fec
-
-# finalised on 15 July 2020 by including 2014 productivity data
-
-# revised on 10 August 2020 to include Peter Ryan's comments
-# adjusted input data to 2-5 million and expanded projection to 36 years (=3 generations)
-
 # REVISION in OCTOBER 2020:
 # updated CMR data input - removed chicks and changed encounter occasion (from year to season)
 # switched to m-array to allow GoF test for survival model - but used this only for GoF test
 # included temporal variation in phi and p in survival model
 # included all transients and switched to a multi-event survival model
+# re-inserted fecundity from previous version v3 that distinguishes between good and bad years
 
 library(tidyverse)
 library(jagsUI)
@@ -102,8 +89,8 @@ succ<-nestsDB %>% filter(Species=="MAPR") %>% filter(Year>2013) %>%
 
 rm(contacts,nestsDB,visDB)
 setwd("C:\\STEFFEN\\RSPB\\UKOT\\Gough\\ANALYSIS\\PopulationModel\\MAPR")
-save.image("MAPR_IPM_input_data.RData")
-load("MAPR_IPM_input_data.RData")
+# save.image("MAPR_IPM_input_data.RData")
+# load("MAPR_IPM_input_data.RData")
 
 succ<-succ[1,] %>% mutate(Year=2014,R=63,J=0) %>% bind_rows(succ) %>% arrange(Year)
 sum(succ$R)
@@ -135,7 +122,7 @@ sum(succ$R)
 
 
 setwd("C:\\STEFFEN\\RSPB\\UKOT\\Gough\\ANALYSIS\\PopulationModel\\MAPR")
-sink("MAPR_IPM_REV1.jags")
+sink("MAPR_IPM_REV1_varfec.jags")
 cat("
   
   
@@ -157,10 +144,12 @@ cat("
     # 1.1. Priors and constraints FOR FECUNDITY
     # -------------------------------------------------
     
-    mean.fec ~ dunif(0,0.5)         ## uninformative prior for CURRENT FECUNDITY
-    orig.fec ~ dunif(0.3,0.35)         ## uninformative prior for ORIGINAL FECUNDITY
+    mean.fec[1] ~ dunif(0,1)         ## uninformative prior for BAD YEARS
+    mean.fec[2] ~ dunif(0,1)         ## uninformative prior for GOOD YEARS
+    prop.good ~ dunif(0,1)           ## proportion of years that is good or bad (to allow past variation when good years were more common)
+    orig.fec ~ dunif(0.8,1)          ## uninformative prior for ORIGINAL FECUNDITY in proportion of years with good (similar to 2016) fecundity
     full.fec ~ dnorm(0.519,100) T(0.1,1)     ## prior for full fecundity without predation from Nevoux & Barbraud (2005) - very high precision
-    fec.decrease <- (mean.fec-orig.fec)/(66-1) ## 66 years elapsed between original pop size data in 1957 and start of productivity time series in 2014
+    fec.decrease <- (prop.good-orig.fec)/(58-0)   ## 58 years elapsed between original pop size data in 1957 and start of productivity time series in 2014
     
     
     # -------------------------------------------------        
@@ -194,18 +183,24 @@ cat("
     # 2.1. System process: female based matrix model
     # -------------------------------------------------
     for (scen in 1:2){
+
+      ### INITIAL VALUES FOR COMPONENTS FOR YEAR 1 - based on stable stage distribution from previous model
+      fec.proj[scen,1]<-mean.fec[year.prop.good[scen,1]+1]    ## takes good or bad year fecundity
+      year.prop.good[scen,1] ~ dbern(orig.fec)
       
       ### INITIAL VALUES FOR COMPONENTS FOR YEAR 1 - based on stable stage distribution from previous model
-      JUV[1,scen]<-round(Ntot.breed[1,scen]*0.5*(orig.fec))
-      N1[1,scen]<-round(Ntot.breed[1,scen]*0.5*(orig.fec)*mean.juv.surv)
-      N2[1,scen]<-round(Ntot.breed[1,scen]*0.5*(orig.fec)*mean.juv.surv*mean.phi)
-      N3[1,scen]<-round(Ntot.breed[1,scen]*0.5*(orig.fec)*mean.juv.surv*mean.phi*mean.phi)
+      JUV[1,scen]<-round(Ntot.breed[1,scen]*0.5*(mean.fec[year.prop.good[scen,1]+1]))
+      N1[1,scen]<-round(Ntot.breed[1,scen]*0.5*(mean.fec[year.prop.good[scen,1]+1])*mean.juv.surv)
+      N2[1,scen]<-round(Ntot.breed[1,scen]*0.5*(mean.fec[year.prop.good[scen,1]+1])*mean.juv.surv*mean.phi)
+      N3[1,scen]<-round(Ntot.breed[1,scen]*0.5*(mean.fec[year.prop.good[scen,1]+1])*mean.juv.surv*mean.phi*mean.phi)
       Ntot.breed[1,scen] ~ dunif(2000000,5000000)         # initial value of population size
       
       for (tt in 2:65){
 
-        ## DECREASING FECUNDITY FROM UNKNOWN ORIGINAL in 1956 to known current fecundity in 2015
-        fec.proj[scen,tt]<-orig.fec + fec.decrease*tt    ## models linear decrease of fecundity
+        ## LINEARLY DECREASING PROBABILITY OF A GOOD YEAR FROM 1956 to 2014
+        year.fec.prop[scen,tt]<- max(0,min(1,(orig.fec + fec.decrease*tt))) ## calculate yearly proportion of good breeding year, but constrain to 0-1 to avoid invalid parent value
+        year.prop.good[scen,tt] ~ dbern(year.fec.prop[scen,tt])
+        fec.proj[scen,tt]<-mean.fec[year.prop.good[scen,tt]+1]    ## takes good or bad year fecundity 
         
         ## THE PRE-BREEDERS ##
         JUV[tt,scen] ~ dbin(fec.proj[scen,tt],round(0.5 * Ntot.breed[tt,scen]))                                   ### number of locally produced FEMALE chicks
@@ -220,8 +215,10 @@ cat("
       
       for (tt in 66:PROJ){
         
-        ## SELECT CURRENT OR RODENT FREE FECUNDITY FOR FUTURE
-        fec.proj[scen,tt]<-max(mean.fec,(scen-1)*full.fec)    ## takes current fecundity for scenario 1 and full fecundity for scenario 2 
+        ## SELECT GOOD OR BAD OR RODENT FREE FECUNDITY FOR FUTURE
+        year.fec.prop[scen,tt]<- min(1,max(0,(orig.fec + fec.decrease*tt))) ## calculate yearly proportion of good breeding year, but constrain to 0-1 to avoid invalid parent value
+        year.prop.good[scen,tt] ~ dbern(year.fec.prop[scen,tt])
+        fec.proj[scen,tt]<-max(mean.fec[year.prop.good[scen,tt]+1],(scen-1)*full.fec)    ## takes current fecundity for scenario 1 and full fecundity for scenario 2 
         
         ## THE PRE-BREEDERS ##
         JUV[tt,scen] ~ dbin(fec.proj[scen,tt],round(0.5 * Ntot.breed[tt,scen]))                                   ### need a discrete number otherwise dbin will fail, dpois must be >0
@@ -244,7 +241,8 @@ cat("
     # -------------------------------------------------
     for (t in 1:(T.fec)){      ### T-1 or not
       J[t] ~ dpois(rho.fec[t])
-      rho.fec[t] <- R[t]*mean.fec
+      rho.fec[t] <- R[t]*mean.fec[goodyear[t]+1]
+      goodyear[t] ~ dbern(prop.good)
     } #	close loop over every year in which we have fecundity data
     
     
@@ -355,6 +353,7 @@ jags.data <- list(## survival
   R =succ$R,
   J=succ$J,
   T.fec=length(succ$J),
+  goodyear=c(0,0,1,0,0,0),
   
   ## population process
   Ntot.obs=matrix(c(3500000,800000,3500000,800000), ncol=2), ### adjusted for v6 to 2-5 million
@@ -367,16 +366,17 @@ inits <- function(){list(mean.phi = runif(1, 0.7, 1),
 
 
 # Parameters monitored
-parameters <- c("orig.fec","mean.fec","fec.decrease","fec.drop","mean.juv.surv","mean.phi","growth.rate","lambda","Ntot.breed")
+#parameters <- c("orig.fec","mean.fec","fec.decrease","fec.drop","mean.juv.surv","mean.phi","growth.rate","lambda","Ntot.breed")
+parameters <- c("orig.fec","mean.fec","fec.decrease","prop.good","mean.juv.surv","mean.phi","growth.rate","lambda","Ntot.breed")
 
 # MCMC settings
-ni <- 1500000
+ni <- 15000
 nt <- 10
-nb <- 50000
+nb <- 5000
 nc <- 3
 
 # Call JAGS from R (model created below)
-MAPR_IPM <- jags(jags.data, inits, parameters, "C:\\STEFFEN\\RSPB\\UKOT\\Gough\\ANALYSIS\\PopulationModel\\MAPR\\MAPR_IPM_REV1.jags",  ## changed from v4 to v6 on 10 Aug
+MAPR_IPM <- jags(jags.data, inits, parameters, "C:\\STEFFEN\\RSPB\\UKOT\\Gough\\ANALYSIS\\PopulationModel\\MAPR\\MAPR_IPM_REV1_varfec.jags",  ## changed from v4 to v6 on 10 Aug
                      n.chains = nc, n.thin = nt, n.burnin = nb,parallel=T,n.iter = ni)
 
 
