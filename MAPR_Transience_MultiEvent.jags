@@ -1,0 +1,88 @@
+
+    model {
+    
+    # -------------------------------------------------
+    # Parameters:
+    # phi: survival probability for adults
+    # p: recapture probability when breeding
+    # -------------------------------------------------
+
+    # Priors and constraints
+    for (t in 1:(n.occasions-1)){
+      logit(phi[t]) <- mu.phi + surv.raneff[t]
+      surv.raneff[t] ~ dnorm(0, tau.phi)
+      p[t] ~ dunif(0, 1)
+      emigrate[t] ~ dunif(0,0.25)
+    }
+
+    mean.phi ~ dunif(0, 1)             # Prior for mean survival
+    #mean.p ~ dunif(0, 1)             # Prior for mean recapture
+    mu.phi <- log(mean.phi / (1-mean.phi)) # Logit transformation
+    sigma.phi ~ dunif(0, 5)                # Prior for standard deviation
+    tau.phi <- pow(sigma.phi, -2)
+    #emigrate ~ dunif(0,0.25)
+
+    # States (S):
+    # 1 dead
+    # 2 alive in Prion Cave
+    # 3 alive as transient
+    
+    # Observations (O):
+    # 1 observed
+    # 2 not observed
+    # -------------------------------------------------
+    
+
+    
+    # -------------------------------------------------
+    # Define state-transition and observation matrices 
+    # -------------------------------------------------
+    
+    for (i in 1:nind){
+    
+    for (t in f[i]:(n.occasions-1)){
+    
+    # Define probabilities of state S(t+1) [last dim] given S(t) [first dim]
+    
+    ps[1,i,t,1]<-1    ## dead birds stay dead
+    ps[1,i,t,2]<-0
+    ps[1,i,t,3]<-0
+    
+    ps[2,i,t,1]<-(1-phi[t])
+    ps[2,i,t,2]<-phi[t]*(1-emigrate[t])
+    ps[2,i,t,3]<-phi[t]*emigrate[t]
+    
+    ps[3,i,t,1]<-(1-phi[t])
+    ps[3,i,t,2]<-0
+    ps[3,i,t,3]<-phi[t]
+    
+    # Define probabilities of O(t) [last dim] given S(t)  [first dim]
+    
+    po[1,i,t,1]<-0
+    po[1,i,t,2]<-1
+    
+    po[2,i,t,1]<-p[t]
+    po[2,i,t,2]<-(1-p[t])
+    
+    po[3,i,t,1]<-0
+    po[3,i,t,2]<-1
+    
+    } #t
+    } #i
+
+
+    # Likelihood 
+    for (i in 1:nind){
+      # Define latent state at first capture
+      z[i,f[i]] <- 2 ## alive when first marked
+      for (t in (f[i]+1):n.occasions){
+        # State process: draw S(t) given S(t-1)
+        z[i,t] ~ dcat(ps[z[i,t-1], i, t-1,])
+        # Observation process: draw O(t) given S(t)
+        y[i,t] ~ dcat(po[z[i,t], i, t-1,])
+      } #t
+    } #i
+
+
+    }
+    

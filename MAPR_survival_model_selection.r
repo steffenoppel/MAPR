@@ -225,7 +225,7 @@ fwrite(ModSelTab[,c(1,2,4:8)],"MAPR_surv_model_selection_table.csv")
 # GOF TESTS of top models
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 setwd("C:\\STEFFEN\\RSPB\\UKOT\\Gough\\ANALYSIS\\PopulationModel\\MAPR")
-save.image("MAPR_model_selection_GoF.RData")
+load("MAPR_model_selection_GoF.RData")
 
 # BAYESIAN P-VALUE OF MOST PARSIMONIOUS MODEL with CONSTANT SURVIVAL
 MASS::eqscplot(MAPRptime$sims.list$fit, MAPRptime$sims.list$fit.new, xlab = "Discrepancy actual data", ylab = "Discrepancy replicate data", las = 1,  

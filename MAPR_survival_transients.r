@@ -7,18 +7,16 @@
 # modified by Steffen oppel, October 2018
 
 ## UPDATED ON 18 JUNE 2020 to account for transients
-## leads to completely unrealistic estimate of survival
-#https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0222241
+# https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0222241
 
 ## MODIFIED ON 19 OCTOBER 2020 to change input data
 ## adjusted temporal variability of p and phi
 ## model converged and yielded sensible estimates -> adopt for population model!
 
-
 library(tidyverse)
 library(data.table)
 library(lubridate)
-library(R2WinBUGS)
+library(jagsUI)
 filter<-dplyr::filter
 select<-dplyr::select
 
@@ -35,22 +33,12 @@ load("GOUGH_seabird_CMR_data.RData")
 
 
 ###### FILTER ADULT DATA FROM RAW CONTACTS ########
-## find the birds marked very late in 2015:
-latemarked<-contacts %>% filter(SpeciesCode %in% c("MAPR","BBPR","PRIO")) %>% filter(Location=="Prion Cave") %>% filter(!Age=="Chick") %>%
-  filter(month(Date_Time) %in% c(12,1,2)) %>% group_by(BirdID) %>% summarise(n=length(Date_Time)) ### %>% filter(day(Date_Time)>15) 
-
-transients<-contacts %>% filter(SpeciesCode %in% c("MAPR","BBPR","PRIO")) %>% filter(Location=="Prion Cave") %>% filter(!Age=="Chick") %>%
-  group_by(BirdID) %>% summarise(n=length(Date_Time)) %>% filter(n==1) 
-
-
 contacts<-contacts %>% filter(SpeciesCode %in% c("MAPR","BBPR","PRIO")) %>% filter(Location=="Prion Cave") %>%
-  #filter(is.na(Age))
   mutate(Age=ifelse(is.na(Age),"Adult",as.character(Age))) %>%
   mutate(Contact_Season=ifelse(is.na(Contact_Season),"2017-18",as.character(Contact_Season))) %>%
   mutate(Contact_Season=ifelse(Contact_Season=="2020-21","2019-20",as.character(Contact_Season))) %>%
   filter(!Age=="Chick")
-#filter(Contact_Year==2015) %>% filter(month(Date_Time)==12) %>% filter(day(Date_Time)>15)
-head(contacts)  ## seabird count data
+head(contacts)
 unique(contacts$Age)
 
 EncHist<-contacts %>% group_by(BirdID,Contact_Season) %>%
@@ -58,7 +46,7 @@ EncHist<-contacts %>% group_by(BirdID,Contact_Season) %>%
   spread(key=Contact_Season,value=n,fill=0)  ### 0 for 'not seen'
 dim(EncHist)
 
-#### FORMAT FOR SIMPLE CJS MODEL ############
+#### FORMAT FOR MULTIEVENT CJS MODEL ############
 CH<-as.matrix(EncHist[,2:ncol(EncHist)], dimnames=F)
 CH<-ifelse(CH>0,1,2)  ##1=seen, 2=not seen
 
@@ -68,7 +56,7 @@ CH<-ifelse(CH>0,1,2)  ##1=seen, 2=not seen
 # SPECIFY MULTI-EVENT MODEL ACCOUNTING FOR TRANSIENTS
 #########################################################################
 
-sink("MAPR_Transience_MultiEvent_ptime.jags")
+sink("MAPR_Transience_MultiEvent_ptime_constemig.jags")
 cat("
     model {
     
@@ -80,17 +68,11 @@ cat("
 
     # Priors and constraints
     for (t in 1:(n.occasions-1)){
-      #logit(phi[t]) <- mu.phi + surv.raneff[t]
-      #surv.raneff[t] ~ dnorm(0, tau.phi)
       p[t] ~ dunif(0, 1)
-      emigrate[t] ~ dunif(0,0.25)
     }
 
     mean.phi ~ dunif(0, 1)             # Prior for mean survival
-    #mu.phi <- log(mean.phi / (1-mean.phi)) # Logit transformation
-    #sigma.phi ~ dunif(0, 5)                # Prior for standard deviation
-    #tau.phi <- pow(sigma.phi, -2)
-    #emigrate ~ dunif(0,0.25)
+    emigrate ~ dunif(0,0.25)
 
     # States (S):
     # 1 dead
@@ -119,8 +101,8 @@ cat("
     ps[1,i,t,3]<-0
     
     ps[2,i,t,1]<-(1-mean.phi)
-    ps[2,i,t,2]<-mean.phi*(1-emigrate[t])
-    ps[2,i,t,3]<-mean.phi*emigrate[t]
+    ps[2,i,t,2]<-mean.phi*(1-emigrate)
+    ps[2,i,t,3]<-mean.phi*emigrate
     
     ps[3,i,t,1]<-(1-mean.phi)
     ps[3,i,t,2]<-0
@@ -179,54 +161,106 @@ inits <- function(){list(mean.phi = runif(1, 0.7, 1),
  
 
 # Parameters monitored
-parameters <- c("mean.phi","phi", "p","emigrate")
+parameters <- c("mean.phi","phi", "mean.p","p","emigrate")
 
 # MCMC settings
-ni <- 10000
-nt <- 2
+ni <- 30000
+nt <- 5
 nb <- 5000
 nc <- 3
 
-# Call JAGS from R
-MAPRsurv <- jags(jags.data, inits, parameters, "C:\\STEFFEN\\RSPB\\UKOT\\Gough\\ANALYSIS\\SeabirdSurvival\\MAPR_Transience_MultiEvent_ptime.jags",
+
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+########  FIT AND COMPARE MODELS WITH DIFFERENT TIME PARAMETERIATION    ###########################################
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+inits <- function(){list(mean.phi = runif(1, 0.7, 1),
+                         p = runif(dim(CH)[2]-1, 0, 1))}
+MAPRall <- jags(jags.data, inits, parameters, "C:\\STEFFEN\\RSPB\\UKOT\\Gough\\ANALYSIS\\PopulationModel\\MAPR\\MAPR_Transience_MultiEvent.jags",
                  n.chains = nc, n.thin = nt, n.iter = ni, n.burnin = nb,parallel=T) #  
+out1<-as.data.frame(MAPRall$summary)
+out1$parameter<-row.names(MAPRall$summary)
+out1$model<-"fulltime"
+
+
+inits <- function(){list(mean.phi = runif(1, 0.7, 1),
+                         mean.p = runif(1, 0, 1))}
+MAPRphitime <- jags(jags.data, inits, parameters, "C:\\STEFFEN\\RSPB\\UKOT\\Gough\\ANALYSIS\\PopulationModel\\MAPR\\\\MAPR_Transience_MultiEvent_phitime.jags",
+                 n.chains = nc, n.thin = nt, n.iter = ni, n.burnin = nb,parallel=T) # 
+out2<-as.data.frame(MAPRphitime$summary)
+out2$parameter<-row.names(MAPRphitime$summary)
+out2$model<-"phitime"
+
+
+inits <- function(){list(mean.phi = runif(1, 0.7, 1),
+                         p = runif(dim(CH)[2]-1, 0, 1))}
+MAPRptime <- jags(jags.data, inits, parameters, "C:\\STEFFEN\\RSPB\\UKOT\\Gough\\ANALYSIS\\PopulationModel\\MAPR\\MAPR_Transience_MultiEvent_ptime.jags",
+                 n.chains = nc, n.thin = nt, n.iter = ni, n.burnin = nb,parallel=T) # 
+out3<-as.data.frame(MAPRptime$summary)
+out3$parameter<-row.names(MAPRptime$summary)
+out3$model<-"ptime"
 
 
 
-
-#########################################################################
-# PRODUCE OUTPUT TABLE
-#########################################################################
-
-out<-as.data.frame(MAPRsurv$summary)
-out$parameter<-row.names(MAPRsurv$summary)
-out
-write.table(out,"MAPR_Gough_Survival_estimates_transients.csv", sep=",", row.names=F)
+inits <- function(){list(mean.phi = runif(1, 0.7, 1),
+                         mean.p = runif(1, 0, 1))}
+MAPRconstant <- jags(jags.data, inits, parameters, "C:\\STEFFEN\\RSPB\\UKOT\\Gough\\ANALYSIS\\PopulationModel\\MAPR\\MAPR_Transience_MultiEvent_constant.jags",
+                 n.chains = nc, n.thin = nt, n.iter = ni, n.burnin = nb,parallel=T) # 
+out4<-as.data.frame(MAPRconstant$summary)
+out4$parameter<-row.names(MAPRconstant$summary)
+out4$model<-"constant"
 
 
 
-#########################################################################
-# PRODUCE OUTPUT GRAPH
-#########################################################################
-## only makes sense if survival varies by year
-
-# out[1:11,] %>% select(c(1,5,2,3,7)) %>%
-#   setNames(c('Mean', 'Median','SD','lcl', 'ucl')) %>%
-#   mutate(Year=colnames(rCH)[1:11]) %>%
-#   
-#   ggplot(aes(y=Median, x=Year)) + geom_point(size=2.5)+
-#   geom_errorbar(aes(ymin=lcl, ymax=ucl), width=.1)+
-#   ylab("Annual adult survival probability") +
-#   scale_y_continuous(breaks=seq(0.5,1,0.1), limits=c(0.5,1))+
-#   #scale_x_continuous(breaks=seq(2006,2017,1))+
-#   theme(panel.background=element_rect(fill="white", colour="black"), 
-#         axis.text=element_text(size=18, color="black"), 
-#         axis.title=element_text(size=20),
-#         panel.grid.major = element_blank(), 
-#         panel.grid.minor = element_blank(), 
-#         panel.border = element_blank())
-# 
-# dev.off()
+inits <- function(){list(mean.phi = runif(1, 0.7, 1),
+                         p = runif(dim(CH)[2]-1, 0, 1))}
+MAPRptimeconstemig <- jags(jags.data, inits, parameters, "C:\\STEFFEN\\RSPB\\UKOT\\Gough\\ANALYSIS\\PopulationModel\\MAPR\\MAPR_Transience_MultiEvent_ptime_constemig.jags",
+                  n.chains = nc, n.thin = nt, n.iter = ni, n.burnin = nb,parallel=T) # 
+out5<-as.data.frame(MAPRptimeconstemig$summary)
+out5$parameter<-row.names(MAPRptimeconstemig$summary)
+out5$model<-"ptime_constemig"
 
 
+
+MAPRconstemig <- jags(jags.data, inits, parameters, "C:\\STEFFEN\\RSPB\\UKOT\\Gough\\ANALYSIS\\PopulationModel\\MAPR\\MAPR_Transience_MultiEvent_constemig.jags",
+                n.chains = nc, n.thin = nt, n.iter = ni, n.burnin = nb,parallel=T) #  
+out6<-as.data.frame(MAPRconstemig$summary)
+out6$parameter<-row.names(MAPRconstemig$summary)
+out6$model<-"constemig"
+
+
+### COMBINE OUTPUT FROM ALL 6 MODELS
+out<-bind_rows(out1,out2,out3,out4,out5,out6)
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# EXTRACT DIC TO COMPARE MODELS
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+### CALCULATE AICc:
+## AICc is the Akaike Information Criterion corrected for small sample sizes calculated as:
+## (2 * K - deviance) + (2 * K) * (K+1) / (n - K - 1)
+## DIC is essential for highly complex hierarchical models - https://rss.onlinelibrary.wiley.com/doi/full/10.1111/1467-9868.00353
+## infos about DIC: https://www.mrc-bsu.cam.ac.uk/software/bugs/the-bugs-project-dic/#q12
+
+pd_dic <- function(x) {
+  data.frame(n.eff.parameters=x$pD, n.parameters=dim(x$summary)[1]-3,DIC=x$DIC)
+}
+DIC_tab<-bind_rows(pd_dic(MAPRall),pd_dic(MAPRphitime),pd_dic(MAPRptime),
+                   pd_dic(MAPRconstant),pd_dic(MAPRconstemig),pd_dic(MAPRptimeconstemig)) %>%
+  mutate(model=c("fulltime","phitime","ptime","constant", "constemig","ptime_constemig")) %>%
+  arrange(DIC) %>%
+  mutate(deltaDIC=DIC-DIC[1])
+
+ModSelTab<-out %>% dplyr::select(model, parameter,mean) %>%
+  filter(parameter=="deviance") %>%
+  mutate(mean=round(mean,3)) %>%
+  spread(key=parameter, value=mean, fill="not included") %>%
+  left_join(DIC_tab, by="model") %>%
+  mutate(n.parameters=ifelse(model=="fulltime",n.parameters-1,n.parameters)) %>% ### remove the derived 'mean.phi' from parameter count
+  mutate(n.parameters=ifelse(model=="ran_time",n.parameters-4,n.parameters)) %>% ### remove the 'phi[t]' from parameter count
+  mutate(AICc=(2*n.parameters)+as.numeric(deviance) + (2*n.parameters) * (n.parameters+1) / (dim(rCH)[1]-n.parameters-1)) %>%
+  arrange(AICc) %>%
+  mutate(deltaAIC=AICc-AICc[1])
+ModSelTab
+
+fwrite(ModSelTab,"TableS1_ModelSelection.csv")
 
