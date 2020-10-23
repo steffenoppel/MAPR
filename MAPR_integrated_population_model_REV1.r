@@ -20,6 +20,7 @@ library(jagsUI)
 library(data.table)
 library(lubridate)
 library(popbio)
+library(janitor)
 filter<-dplyr::filter
 select<-dplyr::select
 
@@ -39,13 +40,12 @@ load("GOUGH_seabird_CMR_data.RData")
 
 ###### FILTER ADULT DATA FROM RAW CONTACTS ########
 contacts<-contacts %>% filter(SpeciesCode %in% c("MAPR","BBPR","PRIO")) %>% filter(Location=="Prion Cave") %>%
-  #filter(is.na(Age))
   mutate(Age=ifelse(is.na(Age),"Adult",as.character(Age))) %>%
   mutate(Contact_Season=ifelse(is.na(Contact_Season),"2017-18",as.character(Contact_Season))) %>%
   mutate(Contact_Season=ifelse(Contact_Season=="2020-21","2019-20",as.character(Contact_Season))) %>%
   filter(!Age=="Chick")
-#filter(Contact_Year==2015) %>% filter(month(Date_Time)==12) %>% filter(day(Date_Time)>15)
-head(contacts)  ## seabird count data
+
+head(contacts)  
 unique(contacts$Age)
 
 EncHist<-contacts %>% group_by(BirdID,Contact_Season) %>%
@@ -61,6 +61,11 @@ CH<-ifelse(CH>0,1,2)  ##1=seen, 2=not seen
 get.first <- function(x) min(which(x==1))
 f <- apply(CH, 1, get.first)
 
+
+#### SUMMARISE NUMBER OF DETECTIONS
+EncHist %>% ungroup() %>% gather(key='Season', value='capt',-BirdID) %>% group_by(BirdID) %>%
+  summarise(n_capt=sum(capt)) %>% tabyl(n_capt)
+  
 
 
 #########################################################################
@@ -144,8 +149,8 @@ cat("
     
     mean.fec[1] ~ dunif(0,1)         ## uninformative prior for BAD YEARS
     mean.fec[2] ~ dunif(0,1)         ## uninformative prior for GOOD YEARS
-    prop.good ~ dunif(0,1)           ## proportion of years that is good or bad (to allow past variation when good years were more common)
-    orig.fec ~ dunif(0.87,0.93)        ## uninformative prior for ORIGINAL FECUNDITY in proportion of years with good (similar to 2016) fecundity
+    prop.good ~ dunif(0,0.3)        ## proportion of years that is good or bad (to allow past variation when good years were more common)
+    orig.fec ~ dunif(0.88,0.94)        ## uninformative prior for ORIGINAL FECUNDITY in proportion of years with good (similar to 2016) fecundity
     full.fec ~ dnorm(0.519,100) T(0.1,1)     ## prior for full fecundity without predation from Nevoux & Barbraud (2005) - very high precision
     fec.decrease <- (prop.good-orig.fec)/(58-0)   ## 58 years elapsed between original pop size data in 1957 and start of productivity time series in 2014
     
@@ -369,9 +374,9 @@ inits <- function(){list(mean.phi = runif(1, 0.7, 1),
 parameters <- c("orig.fec","mean.fec","fec.decrease","prop.good","mean.juv.surv","mean.phi","growth.rate","lambda","Ntot.breed")
 
 # MCMC settings
-ni <- 55000
+ni <- 150000
 nt <- 10
-nb <- 5000
+nb <- 50000
 nc <- 3
 
 # Call JAGS from R (model created below)
@@ -413,6 +418,12 @@ TABLE1
 setwd("C:\\STEFFEN\\MANUSCRIPTS\\submitted\\MAPR_pop_model")
 fwrite(TABLE1,"MAPR_demographic_parameter_estimates_REV1.csv")
 
+## FORMAT TABLE FOR MANUSCRIPT
+
+TABLE1 %>% mutate(MED=paste(round(Median,3)," (",round(lowerCL,3)," - ", round(upperCL,3),")", sep="")) %>%
+  select(Parameter,MED) %>%
+  rename(`Median (95% credible interval)`=MED)
+
 
 ## REPORT QUANTITIES FOR RESULTS SECTION
 sum(succ$R)
@@ -438,7 +449,7 @@ MAPRpop<-out[(grep("Ntot.breed\\[",out$parameter)),c(12,5,4,6)] %>%
 ### summary for manuscript
 MAPRpop %>% filter(Year==2020)
 MAPRpop %>% filter(Year==1956)
-146305.5/3489647
+174684/3502083
 
 ### CREATE PLOT FOR BASELINE TRAJECTORY
 MAPRpop$ucl[MAPRpop$ucl>5000000]<-4999999
@@ -502,7 +513,6 @@ ggsave("MAPR_population_projection_REV1_CI50_INSET.jpg", width=9, height=6)
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # GRAPH 2: EXTINCTION PROBABILITY OVER TIME
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 ### EXTRACT AND COMBINE DATA FROM ALL CHAINS 
 selcol<-grep("Ntot.breed",dimnames(MAPR_IPM$samples[[1]])[[2]])   ## FIND COLUMS WE NEED
 allchainsamples <- data.frame()
@@ -510,6 +520,7 @@ for(chain in 1:3) {
   samplesout<-as.data.frame(MAPR_IPM$samples[[chain]][,selcol]) %>% gather(key="parm", value="value")
   allchainsamples <- rbind(allchainsamples,as.data.frame(samplesout))
 }
+
   
 ### CALCULATE EXTINCTION PROBABILITY
 extprop <- allchainsamples %>%
@@ -528,14 +539,14 @@ dim(extprop)
 
 
 ## CREATE A COLOUR PALETTE FOR THE NUMBER OF CHICKS RELEASED
-colfunc <- colorRampPalette(c("cornflowerblue", "firebrick"))
+colfunc <- colorRampPalette(c("firebrick","cornflowerblue"))
 
 
 ggplot(data=extprop)+
   geom_line(aes(x=Year, y=ext.prob, color=Scenario), size=1)+
   
   ## format axis ticks
-  scale_y_continuous(name="Probability of extinction (%)", limits=c(0,0.3),breaks=seq(0,0.3,0.05), labels=as.character(seq(0,30,5)))+
+  scale_y_continuous(name="Probability of extinction (%)", limits=c(0,0.35),breaks=seq(0,0.35,0.05), labels=as.character(seq(0,35,5)))+
   scale_x_continuous(name="Year", breaks=seq(2020,2055,5), labels=as.character(seq(2020,2055,5)))+
   guides(color=guide_legend(title="Scenario"),fill=guide_legend(title="Scenario"))+
   scale_colour_manual(palette=colfunc)+
@@ -543,11 +554,12 @@ ggplot(data=extprop)+
   ## beautification of the axes
   theme(panel.background=element_rect(fill="white", colour="black"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
         axis.text.y=element_text(size=14, color="black"),
-        axis.text.x=element_text(size=12, color="black",angle=45, vjust = 1, hjust=1),
+        axis.text.x=element_text(size=14, color="black",angle=45, vjust = 1, hjust=1),
         axis.title=element_text(size=18),
-        legend.text=element_text(size=12, color="black"),
+        legend.text=element_text(size=14, color="black"),
         legend.title=element_text(size=14, color="black"),
         legend.key = element_rect(fill = NA),
+        legend.position = c(0.15,0.90),
         strip.text.x=element_text(size=14, color="black"),
         strip.text.y=element_text(size=14, color="black"),
         strip.background=element_rect(fill="white", colour="black"))
@@ -570,13 +582,18 @@ fwrite(TABLE2,"TABLE2.csv")
 
 
 
-##### PLAYING WITH PRIORS
-orig.fec<- 0.35
-mean.fec=0.08
-fec.drop<-mean.fec/orig.fec
 
-fec.drop ~ dunif(0,1)      ## uninformative prior for DECREASE IN FECUNDITY
-orig.fec ~ dunif(0,1)         ## uninformative prior for ORIGINAL FECUNDITY
-full.fec ~ dnorm(0.519,100) T(0.1,1)     ## prior for full fecundity without predation from Nevoux & Barbraud (2005) - very high precision
-mean.fec <- orig.fec * (1 - fec.drop)
-fec.decrease <- fec.drop * orig.fec / (66 - 1)
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# PROPORTION OF SIMULATIONS WITH NEGATIVE GROWTH RATE AFTER MOUSE ERADICATION
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### EXTRACT AND COMBINE DATA FROM ALL CHAINS 
+futlamsamples <- data.frame()
+for(chain in 1:3) {
+  samplesout<-as.data.frame(MAPR_IPM$samples[[chain]][,9]) %>% gather(key="parm", value="value")
+  futlamsamples <- rbind(futlamsamples,as.data.frame(samplesout))
+}
+head(futlamsamples)
+
+futlamsamples %>% mutate(decline=ifelse(value<0.95,1,0)) %>%
+  tabyl(decline)
