@@ -225,32 +225,26 @@ fwrite(ModSelTab[,c(1,2,4:8)],"MAPR_surv_model_selection_table.csv")
 # GOF TESTS of top models
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 setwd("C:\\STEFFEN\\RSPB\\UKOT\\Gough\\ANALYSIS\\PopulationModel\\MAPR")
-load("MAPR_model_selection_GoF.RData")
+save.image("MAPR_model_selection_GoF.RData")
 
-# CONSTANT SURVIVAL
+# BAYESIAN P-VALUE OF MOST PARSIMONIOUS MODEL with CONSTANT SURVIVAL
 MASS::eqscplot(MAPRptime$sims.list$fit, MAPRptime$sims.list$fit.new, xlab = "Discrepancy actual data", ylab = "Discrepancy replicate data", las = 1,  
      xlim=range(MAPRptime$sims.list$fit, MAPRptime$sims.list$fit.new), ylim=range(MAPRptime$sims.list$fit, MAPRptime$sims.list$fit.new),bty ="n") 
 abline(0, 1, lwd=2, col='red')
 mean(MAPRptime$sims.list$fit.new > MAPRptime$sims.list$fit)
 
-# FULL TIME
-MASS::eqscplot(MAPRall$sims.list$fit, MAPRall$sims.list$fit.new, xlab = "Discrepancy actual data", ylab = "Discrepancy replicate data", las = 1,  
-     xlim=range(MAPRall$sims.list$fit, MAPRall$sims.list$fit.new), ylim=range(MAPRall$sims.list$fit, MAPRall$sims.list$fit.new),bty ="n") 
-abline(0, 1, lwd=2, col='red')
-mean(MAPRall$sims.list$fit.new > MAPRall$sims.list$fit)
-
-# RANDOM TIME
-MASS::eqscplot(MAPRraneff$sims.list$fit, MAPRraneff$sims.list$fit.new, xlab = "Discrepancy actual data", ylab = "Discrepancy replicate data", las = 1,  
-               xlim=range(MAPRraneff$sims.list$fit, MAPRraneff$sims.list$fit.new), ylim=range(MAPRraneff$sims.list$fit, MAPRraneff$sims.list$fit.new),bty ="n") 
-abline(0, 1, lwd=2, col='red')
-mean(MAPRraneff$sims.list$fit.new > MAPRraneff$sims.list$fit)
-
+# BAYESIAN P-VALUE OF OLD CJS MODEL WITHOUT TRANSIENTS
+jags.data <- list(marr = rmarr, n.occasions = dim(marr)[2])
+inits <- function(){list(phi = runif(1, 0.7, 1), p = runif(dim(marr)[2]-1, 0, 1))}  
+MAPRold <- bugs(jags.data, inits, parameters, "C:\\STEFFEN\\RSPB\\UKOT\\Gough\\ANALYSIS\\SeabirdSurvival\\MAPR_CJS_marray_ptime.bugs",
+                  n.chains = nc, n.thin = nt, n.iter = ni, n.burnin = nb, debug = FALSE, bugs.directory = "C:\\STEFFEN\\Software\\WinBUGS14", working.directory = getwd())
+mean(MAPRold$sims.list$fit.new > MAPRold$sims.list$fit)
 
 
 
 ### MAKE FIGURE S1 FOR MANUSCRIPT
 plotdata1<-data.frame(obs=MAPRptime$sims.list$fit, sim=MAPRptime$sims.list$fit.new, model="with transients")
-plotdata2<-data.frame(obs=MAPRall$sims.list$fit, sim=MAPRall$sims.list$fit.new, model="no transients")
+plotdata2<-data.frame(obs=MAPRold$sims.list$fit, sim=MAPRold$sims.list$fit.new, model="no transients")
 
 bind_rows(plotdata1,plotdata2) %>%
   ggplot() + geom_point(aes(x=obs,y=sim), size=1,colour="darkgrey") +
@@ -268,6 +262,10 @@ bind_rows(plotdata1,plotdata2) %>%
         panel.grid.major = element_blank(), 
         panel.grid.minor = element_blank(), 
         panel.border = element_blank())
+
+ggsave("FigS1_GoF_MAPR_survival.jpg", width=9, height=6)
+
+
 
 
 
