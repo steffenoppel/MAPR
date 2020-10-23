@@ -125,7 +125,7 @@ sum(succ$R)
 
 
 setwd("C:\\STEFFEN\\RSPB\\UKOT\\Gough\\ANALYSIS\\PopulationModel\\MAPR")
-sink("MAPR_IPM_REV1_varfec.jags")
+sink("MAPR_IPM_REV1_varfec_constemig.jags")
 cat("
   
   
@@ -150,7 +150,7 @@ cat("
     mean.fec[1] ~ dunif(0,1)         ## uninformative prior for BAD YEARS
     mean.fec[2] ~ dunif(0,1)         ## uninformative prior for GOOD YEARS
     prop.good ~ dunif(0,0.3)        ## proportion of years that is good or bad (to allow past variation when good years were more common)
-    orig.fec ~ dunif(0.88,0.94)        ## uninformative prior for ORIGINAL FECUNDITY in proportion of years with good (similar to 2016) fecundity
+    orig.fec ~ dunif(0.9,0.94)        ## uninformative prior for ORIGINAL FECUNDITY in proportion of years with good (similar to 2016) fecundity
     full.fec ~ dnorm(0.519,100) T(0.1,1)     ## prior for full fecundity without predation from Nevoux & Barbraud (2005) - very high precision
     fec.decrease <- (prop.good-orig.fec)/(58-0)   ## 58 years elapsed between original pop size data in 1957 and start of productivity time series in 2014
     
@@ -170,12 +170,13 @@ cat("
       #logit(phi[t]) <- mu.phi + surv.raneff[t]
       #surv.raneff[t] ~ dnorm(0, tau.phi)
       p[t] ~ dunif(0, 1)
-      emigrate[t] ~ dunif(0,0.25)
+      #emigrate[t] ~ dunif(0,0.25)
     }
     
     mean.phi ~ dunif(0, 1)             # Prior for mean survival
     #juv.surv.prop ~ dnorm(mean.juv.surv.prop,1000) T(0,1)
-    mean.juv.surv ~ dunif(0.63,0.78)    ## based on juvenile survival for Balearic shearwaters in the Med.
+    mean.juv.surv ~ dunif(0.70,0.85)    ## based on juvenile survival for Balearic shearwaters in the Med, and Grey-faced Petrels
+    emigrate ~ dunif(0,0.25)
     
     #-------------------------------------------------  
     # 2. LIKELIHOODS AND ECOLOGICAL STATE MODEL
@@ -280,8 +281,8 @@ cat("
         ps[1,i,t,3]<-0
     
         ps[2,i,t,1]<-(1-mean.phi)
-        ps[2,i,t,2]<-mean.phi*(1-emigrate[t])
-        ps[2,i,t,3]<-mean.phi*emigrate[t]
+        ps[2,i,t,2]<-mean.phi*(1-emigrate)
+        ps[2,i,t,3]<-mean.phi*emigrate
     
         ps[3,i,t,1]<-(1-mean.phi)
         ps[3,i,t,2]<-0
@@ -366,7 +367,7 @@ jags.data <- list(## survival
 # Initial values 
 inits <- function(){list(mean.phi = runif(1, 0.7, 1),
                          p = runif(dim(CH)[2]-1, 0, 1),
-                         orig.fec= runif(1, 0.75, 0.85))}  ### adjusted for REV1 as frequency of good years
+                         orig.fec= runif(1, 0.9, 0.95))}  ### adjusted for REV1 as frequency of good years
 
 
 # Parameters monitored
@@ -374,13 +375,13 @@ inits <- function(){list(mean.phi = runif(1, 0.7, 1),
 parameters <- c("orig.fec","mean.fec","fec.decrease","prop.good","mean.juv.surv","mean.phi","growth.rate","lambda","Ntot.breed")
 
 # MCMC settings
-ni <- 150000
+ni <- 50000
 nt <- 10
-nb <- 50000
+nb <- 10000
 nc <- 3
 
 # Call JAGS from R (model created below)
-MAPR_IPM <- jags(jags.data, inits, parameters, "C:\\STEFFEN\\RSPB\\UKOT\\Gough\\ANALYSIS\\PopulationModel\\MAPR\\MAPR_IPM_REV1_varfec.jags",  ## changed from v4 to v6 on 10 Aug
+MAPR_IPM <- jags(jags.data, inits, parameters, "C:\\STEFFEN\\RSPB\\UKOT\\Gough\\ANALYSIS\\PopulationModel\\MAPR\\MAPR_IPM_REV1_varfec_constemig.jags",  ## changed from v4 to v6 on 10 Aug
                      n.chains = nc, n.thin = nt, n.burnin = nb,parallel=T,n.iter = ni)
 
 
