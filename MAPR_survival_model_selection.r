@@ -224,6 +224,8 @@ fwrite(ModSelTab[,c(1,2,4:8)],"MAPR_surv_model_selection_table.csv")
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # GOF TESTS of top models
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+setwd("C:\\STEFFEN\\RSPB\\UKOT\\Gough\\ANALYSIS\\PopulationModel\\MAPR")
+load("MAPR_model_selection_GoF.RData")
 
 # CONSTANT SURVIVAL
 MASS::eqscplot(MAPRptime$sims.list$fit, MAPRptime$sims.list$fit.new, xlab = "Discrepancy actual data", ylab = "Discrepancy replicate data", las = 1,  
@@ -244,8 +246,28 @@ abline(0, 1, lwd=2, col='red')
 mean(MAPRraneff$sims.list$fit.new > MAPRraneff$sims.list$fit)
 
 
-save.image("MAPR_model_selection_GoF.RData")
 
+
+### MAKE FIGURE S1 FOR MANUSCRIPT
+plotdata1<-data.frame(obs=MAPRptime$sims.list$fit, sim=MAPRptime$sims.list$fit.new, model="with transients")
+plotdata2<-data.frame(obs=MAPRall$sims.list$fit, sim=MAPRall$sims.list$fit.new, model="no transients")
+
+bind_rows(plotdata1,plotdata2) %>%
+  ggplot() + geom_point(aes(x=obs,y=sim), size=1,colour="darkgrey") +
+  facet_wrap(~model) +
+  geom_abline(intercept=0, slope=1,colour="darkred", size=1.5)+
+  scale_x_continuous(limits=c(0,15),breaks=seq(0,15,5), labels=seq(0,15,5))+
+  scale_y_continuous(limits=c(0,15),breaks=seq(0,15,5), labels=seq(0,15,5))+
+  xlab("Discrepancy observed data") +
+  ylab("Discrepancy simulated data") +
+  theme(panel.background=element_rect(fill="white", colour="black"), 
+        axis.text=element_text(size=18, color="black"), 
+        axis.title=element_text(size=20), 
+        strip.text.x=element_text(size=18, color="black"), 
+        strip.background=element_rect(fill="white", colour="black"), 
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), 
+        panel.border = element_blank())
 
 
 
