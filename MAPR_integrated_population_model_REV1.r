@@ -415,15 +415,15 @@ TABLE1<-out %>% filter(parameter %in% c('mean.fec[1]','mean.fec[2]','orig.fec','
 names(TABLE1)<-c("Parameter","Median","lowerCL","upperCL")
 TABLE1$Parameter<-c("original proportion of good breeding year (1956)","productivity (poor year)","productivity (good year)","annual decline in frequency of good breeding year","current proportion of good breeding year (2014-2019)","first year survival probability","annual adult survival probability","annual population growth rate (no eradication)","annual population growth rate (with eradication)")
 TABLE1
-setwd("C:\\STEFFEN\\MANUSCRIPTS\\submitted\\MAPR_pop_model")
 fwrite(TABLE1,"MAPR_demographic_parameter_estimates_REV1.csv")
 
 ## FORMAT TABLE FOR MANUSCRIPT
 
-TABLE1 %>% mutate(MED=paste(round(Median,3)," (",round(lowerCL,3)," - ", round(upperCL,3),")", sep="")) %>%
+TABLE1<-TABLE1 %>% mutate(MED=paste(round(Median,3)," (",round(lowerCL,3)," - ", round(upperCL,3),")", sep="")) %>%
   select(Parameter,MED) %>%
   rename(`Median (95% credible interval)`=MED)
-
+setwd("C:\\STEFFEN\\MANUSCRIPTS\\submitted\\MAPR_pop_model")
+fwrite(TABLE1,"TABLE1.csv")
 
 ## REPORT QUANTITIES FOR RESULTS SECTION
 sum(succ$R)
