@@ -601,3 +601,54 @@ head(futlamsamples)
 
 futlamsamples %>% mutate(decline=ifelse(value<0.95,1,0)) %>%
   tabyl(decline)
+
+
+
+
+
+
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##
+## SUMMARISE WIND AND RAIN FOR MAPR BREED SUCCESS YEARS
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##
+
+## count number of precipitation-free days
+
+try(setwd("C:\\STEFFEN\\RSPB\\UKOT\\Gough\\DATA\\Weather"), silent=T)
+weather<-fread("Gough_weather_data_2000_2020.csv")
+head(weather)
+weathersummary<-weather %>% group_by(Year) %>%
+  summarise(mean_wind=mean(Windspeed, na.rm=T),max_wind=max(Windspeed, na.rm=T),rain=sum(Rain)) %>%
+  filter(Year %in% succ$Year)
+weathersummary
+
+### McClelland et al. 2018 used 'rain free days' but that metric is suspicious in 2014!
+rainsummary<-weather %>% group_by(Year, Month, Day) %>%
+  summarise(rain=sum(Rain)) %>%
+  mutate(rainfree=ifelse(rain==0,1,0)) %>%
+  ungroup() %>%
+  group_by(Year) %>%
+  summarise(rainfreedays=sum(rainfree)) %>%
+  filter(Year %in% succ$Year)
+rainsummary
+
+
+
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##
+## PRODUCE WEATHER CHART
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##
+
+ggplot(weathersummary, mapping = aes(x = Year, y = mean_wind, group = 1)) + 
+  geom_bar(mapping = aes(y = rain/100), stat = "identity", color="cornflowerblue", fill="cornflowerblue", width = 0.5) + 
+  geom_line(color="indianred", size=1.5) +
+  
+
+  ## format axis ticks
+  scale_y_continuous("Mean wind speed (m/s)", sec.axis = sec_axis(~.*100, name = "Precipitation (mm)")) +
+  scale_x_continuous(name="Year", limits=c(2013.6,2019.4), breaks=seq(2014,2019,1)) +
+  
+  ## beautification of the axes
+  theme(panel.background=element_rect(fill="white", colour="black"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.text=element_text(size=14, color="black"),
+        axis.title=element_text(size=18))
