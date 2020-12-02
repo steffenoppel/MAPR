@@ -185,7 +185,7 @@ out1$model<-"fulltime"
 
 inits <- function(){list(mean.phi = runif(1, 0.7, 1),
                          mean.p = runif(1, 0, 1))}
-MAPRphitime <- jags(jags.data, inits, parameters, "C:\\STEFFEN\\RSPB\\UKOT\\Gough\\ANALYSIS\\PopulationModel\\MAPR\\\\MAPR_Transience_MultiEvent_phitime.jags",
+MAPRphitime <- jags(jags.data, inits, parameters, "C:\\STEFFEN\\RSPB\\UKOT\\Gough\\ANALYSIS\\PopulationModel\\MAPR\\MAPR_Transience_MultiEvent_phitime.jags",
                  n.chains = nc, n.thin = nt, n.iter = ni, n.burnin = nb,parallel=T) # 
 out2<-as.data.frame(MAPRphitime$summary)
 out2$parameter<-row.names(MAPRphitime$summary)
@@ -242,7 +242,7 @@ out<-bind_rows(out1,out2,out3,out4,out5,out6)
 ## infos about DIC: https://www.mrc-bsu.cam.ac.uk/software/bugs/the-bugs-project-dic/#q12
 
 pd_dic <- function(x) {
-  data.frame(n.eff.parameters=x$pD, n.parameters=dim(x$summary)[1]-3,DIC=x$DIC)
+  data.frame(n.eff.parameters=x$pD, n.parameters=dim(x$summary)[1]-3,DIC=x$DIC, deviance=x$summary[rownames(x$summary)=="deviance",1])
 }
 DIC_tab<-bind_rows(pd_dic(MAPRall),pd_dic(MAPRphitime),pd_dic(MAPRptime),
                    pd_dic(MAPRconstant),pd_dic(MAPRconstemig),pd_dic(MAPRptimeconstemig)) %>%

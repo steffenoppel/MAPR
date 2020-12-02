@@ -247,8 +247,8 @@ plotdata1<-data.frame(obs=MAPRptime$sims.list$fit, sim=MAPRptime$sims.list$fit.n
 plotdata2<-data.frame(obs=MAPRold$sims.list$fit, sim=MAPRold$sims.list$fit.new, model="no transients")
 
 bind_rows(plotdata1,plotdata2) %>%
-  ggplot() + geom_point(aes(x=obs,y=sim), size=1,colour="darkgrey") +
-  facet_wrap(~model) +
+  ggplot(plotdata1) + geom_point(aes(x=obs,y=sim), size=1,colour="darkgrey") +
+  #facet_wrap(~model) +
   geom_abline(intercept=0, slope=1,colour="darkred", size=1.5)+
   scale_x_continuous(limits=c(0,15),breaks=seq(0,15,5), labels=seq(0,15,5))+
   scale_y_continuous(limits=c(0,15),breaks=seq(0,15,5), labels=seq(0,15,5))+
@@ -263,7 +263,7 @@ bind_rows(plotdata1,plotdata2) %>%
         panel.grid.minor = element_blank(), 
         panel.border = element_blank())
 
-ggsave("FigS1_GoF_MAPR_survival.jpg", width=9, height=6)
+ggsave("FigS1_GoF_MAPR_survival_revised.jpg", width=9, height=6)
 
 
 

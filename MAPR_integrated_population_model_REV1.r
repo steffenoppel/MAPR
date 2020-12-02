@@ -175,11 +175,9 @@ cat("
     
     mean.phi ~ dunif(0, 1)             # Prior for mean survival
     #juv.surv.prop ~ dnorm(mean.juv.surv.prop,1000) T(0,1)
-<<<<<<< Updated upstream
     mean.juv.surv ~ dunif(0.63,0.78)    ## based on juvenile survival for Balearic shearwaters in the Med.
-=======
-    mean.juv.surv ~ dunif(0.70,0.85)    ## based on juvenile survival for Balearic shearwaters in the Med, and Grey-faced Petrels
->>>>>>> Stashed changes
+    #mean.juv.surv ~ dunif(0.70,0.85)    ## based on juvenile survival for Balearic shearwaters in the Med, and Grey-faced Petrels
+
     
     #-------------------------------------------------  
     # 2. LIKELIHOODS AND ECOLOGICAL STATE MODEL
