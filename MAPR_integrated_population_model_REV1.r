@@ -387,9 +387,9 @@ MAPR_IPM <- jags(jags.data, inits, parameters, "C:\\STEFFEN\\RSPB\\UKOT\\Gough\\
 
 
 ### save model workspace
-setwd("C:\\STEFFEN\\MANUSCRIPTS\\submitted\\MAPR_pop_model")
-save.image("MAPR_IPM_REV1.RData")
-#load("MAPR_IPM_REV1.RData")
+setwd("C:\\STEFFEN\\MANUSCRIPTS\\in_press\\MAPR_pop_model")
+#save.image("MAPR_IPM_REV1.RData")
+load("MAPR_IPM_REV1.RData")
 
 
 
@@ -417,7 +417,7 @@ TABLE1<-out %>% filter(parameter %in% c('mean.fec[1]','mean.fec[2]','orig.fec','
 names(TABLE1)<-c("Parameter","Median","lowerCL","upperCL")
 TABLE1$Parameter<-c("original proportion of good breeding year (1956)","productivity (poor year)","productivity (good year)","annual decline in frequency of good breeding year","current proportion of good breeding year (2014-2019)","first year survival probability","annual adult survival probability","annual population growth rate (no eradication)","annual population growth rate (with eradication)")
 TABLE1
-fwrite(TABLE1,"MAPR_demographic_parameter_estimates_REV1.csv")
+#fwrite(TABLE1,"MAPR_demographic_parameter_estimates_REV1.csv")
 
 ## FORMAT TABLE FOR MANUSCRIPT
 
@@ -425,7 +425,7 @@ TABLE1<-TABLE1 %>% mutate(MED=paste(round(Median,3)," (",round(lowerCL,3)," - ",
   select(Parameter,MED) %>%
   rename(`Median (95% credible interval)`=MED)
 setwd("C:\\STEFFEN\\MANUSCRIPTS\\submitted\\MAPR_pop_model")
-fwrite(TABLE1,"TABLE1.csv")
+#fwrite(TABLE1,"TABLE1.csv")
 
 ## REPORT QUANTITIES FOR RESULTS SECTION
 sum(succ$R)
@@ -480,6 +480,7 @@ ggplot()+
         legend.key = element_rect(fill = NA),
         strip.text.x=element_text(size=18, color="black"), 
         strip.background=element_rect(fill="white", colour="black"))
+ggsave("Figure1.tif", width = 9, height = 6, device='tiff', dpi=300)
 ggsave("MAPR_population_projection_REV1_CI50.jpg", width=9, height=6)
 
 
@@ -565,7 +566,7 @@ ggplot(data=extprop)+
         strip.text.x=element_text(size=14, color="black"),
         strip.text.y=element_text(size=14, color="black"),
         strip.background=element_rect(fill="white", colour="black"))
-
+ggsave("Figure2.tif", width = 9, height = 6, device='tiff', dpi=300)
 ggsave("MAPR_extinction_probability_REV1_250.jpg", width=9, height=6)
 
 
